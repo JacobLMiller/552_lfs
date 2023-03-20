@@ -1,3 +1,7 @@
+#define _XOPEN_SOURCE 700
+
+#define FUSE_USE_VERSION 35 
+
 #include <stdio.h>
 #include <fuse.h>
 #include <string.h>
