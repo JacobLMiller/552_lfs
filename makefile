@@ -1,17 +1,20 @@
 CC=gcc
 CFLAGS= -Wall -D_FILE_OFFSET_BITS=64 -lfuse
 # CFLAGS= -Wall `pkg-config fuse3 --cflags --libs`
-DEPS = types.h
-OBJ = flash.o mklfs.o
-OBJ2 = flash.o lfs.o
+DEPS = global.h types.h lfs.h
+OBJ_MKLFS = flash.o mklfs.o
+OBJ_LFS = flash.o inode-tab.o dir.o lfs.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-lfs: $(OBJ2)
+lfs: $(OBJ_LFS)
 	$(CC) -o $@ $^ $(CFLAGS)
 
-mklfs: $(OBJ)
+mklfs: $(OBJ_MKLFS)
+	$(CC) -o $@ $^ $(CFLAGS)
+
+russtest: flash.o russ_test.o 
 	$(CC) -o $@ $^ $(CFLAGS)
 
 

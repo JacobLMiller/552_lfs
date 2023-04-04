@@ -7,18 +7,16 @@
 #define DEBUG 0
 
 #define DEF_WEAR_LIM 1000 
+//Size of disk in segments
 #define DEF_DISK_SIZE 100
+//Size of blocks in sectors (defined in flash)
 #define DEF_BLOCK_SIZE 2
+//Size of segments in blocks
 #define DEF_SEG_SIZE 32
 
 
-#include <stdio.h>
-#include <fuse.h>
-#include <string.h>
-#include <errno.h>
 #include <unistd.h>
 // #include <malloc.h>
-#include <stdlib.h>
 #include "flash.h"
 #include "types.h"
 
@@ -36,6 +34,18 @@ void fill_device(char *fname,u_int n_segments, u_int block_size, u_int seg_size)
     if (fail){
         printf("Failed to write header.\n");
     }
+
+
+    u_int buf2[FLASH_BLOCK_SIZE];
+    printf("%d\n",FLASH_BLOCK_SIZE);
+    for (int i = 0; i < 2; i++){
+        buf2[i] = i*2;
+    }
+    fail = Flash_Write(mydevice,0,FLASH_SECTORS_PER_BLOCK,buf2);
+    if (fail){
+        printf("Oops %d\n",fail);
+    }
+
 }
 
 int main(int argc, char **argv){
