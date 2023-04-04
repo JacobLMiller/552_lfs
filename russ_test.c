@@ -2,6 +2,9 @@
 
 #define FUSE_USE_VERSION 35 
 
+#define u_int unsigned int
+
+
 #include <stdio.h>
 #include <fuse.h>
 #include <string.h>
@@ -9,7 +12,10 @@
 #include <unistd.h>
 // #include <malloc.h>
 #include <stdlib.h>
+#include "flash.h"
 
+
+extern int Flash_Create(char *file, u_int wearLimit, u_int blocks);
 
 
 typedef struct LFS_OpenFile {
@@ -77,6 +83,9 @@ static struct fuse_operations ops = {
 
 int main(int argc, char **argv)
 {
+    int test = Flash_Create("mfile", 2, 15);
+    printf("%d\n",test);
+    printf("Hello I am in main.\n");
     return fuse_main(argc,argv, &ops, NULL);
 }
 
@@ -280,8 +289,10 @@ static int lfs_write(const char *path,
     if (file_data->is_the_writable_file == 0)
         return -EINVAL;     // it's illegal to attempt to write to a readonly file
 
-    if (offset != 0)
-        return -EINVAL;     // THIS IS WRONG!  Implement me, handle writes in the middle
+    if (offset != 0){
+        printf("hello there");
+    }
+        // return -EINVAL;     // THIS IS WRONG!  Implement me, handle writes in the middle
 
     if (size > sizeof(writable_file_data.buf))
         return -EINVAL;     // THIS IS WRONG!  Implement me, handle long writes to files
