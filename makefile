@@ -22,5 +22,5 @@ russtest: flash.o russ_test.o
 
 .PHONY: clean
 clean: 
-	rm -f *.o *~ out 
+	rm -f *.o *~ out russtest lfs mklfs myfile
 	

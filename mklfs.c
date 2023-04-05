@@ -20,31 +20,35 @@
 #include "flash.h"
 #include "types.h"
 
+int totalsectors = 64;
 
-void fill_device(char *fname,u_int n_segments, u_int block_size, u_int seg_size){
+void fill_device(char *fname,u_int n_segments, u_int block_size, u_int seg_size,u_int wearlimit){
     u_int blocks;
-    Flash mydevice = Flash_Open(fname,0,&blocks);
+    Flash mydevice = Flash_Open(fname,FLASH_ASYNC,&blocks);
 
-    u_int buf[FLASH_BLOCK_SIZE];
-    buf[0] = n_segments;
-    buf[1] = block_size;
-    buf[2] = seg_size;
+    if (! mydevice){
+        printf("Could not open file\n");
+        return;
+    }
+    
+    disk_data *data = malloc(sizeof(disk_data));
+    data->blocksize   = block_size;
+    data->segsize     = seg_size;
+    data->disksize    = n_segments;
+    data->wearlimit   = wearlimit;
+    data->cur_sector  = seg_size * block_size;
+    data->cur_block   = 0;
+    data->cur_segment = 1;
+    data->table_size  = 0;
 
-    int fail = Flash_Write(mydevice,0,FLASH_SECTORS_PER_BLOCK,buf);
+    int fail = Flash_Write(mydevice,0,totalsectors,(void*)data);
     if (fail){
         printf("Failed to write header.\n");
     }
+    else 
+        printf("Succesfully wrote to file %s\n",fname);
 
-
-    u_int buf2[FLASH_BLOCK_SIZE];
-    printf("%d\n",FLASH_BLOCK_SIZE);
-    for (int i = 0; i < 2; i++){
-        buf2[i] = i*2;
-    }
-    fail = Flash_Write(mydevice,0,FLASH_SECTORS_PER_BLOCK,buf2);
-    if (fail){
-        printf("Oops %d\n",fail);
-    }
+    Flash_Close(mydevice);
 
 }
 
@@ -52,8 +56,8 @@ int main(int argc, char **argv){
 
     //Init LFS parameters
     u_int n_segments = DEF_DISK_SIZE, block_size = DEF_BLOCK_SIZE, seg_size = DEF_SEG_SIZE;
-    u_int wearlim = DEF_WEAR_LIM, blocks = n_segments / seg_size;
-    blocks = n_segments % seg_size == 0 ? blocks : blocks+1;
+    u_int wearlim = DEF_WEAR_LIM;
+    u_int blocks;
 
     //Quit if no file handle
     if (argc < 2){
@@ -66,6 +70,7 @@ int main(int argc, char **argv){
         printf("Invalid segment size; Must >=3 and int multiple of %d",FLASH_SECTORS_PER_BLOCK);
     }
 
+    blocks = (block_size*seg_size*n_segments) / FLASH_SECTORS_PER_BLOCK;
     int flash_device = Flash_Create(argv[1],wearlim,blocks);
 
     if (DEBUG){
@@ -73,7 +78,7 @@ int main(int argc, char **argv){
         printf("Device name is %s\n",argv[1]);
     }
 
-    fill_device(argv[1],n_segments,block_size,seg_size);
+    fill_device(argv[1],n_segments,block_size,seg_size,wearlim);
 
     return flash_device;
 }

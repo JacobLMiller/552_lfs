@@ -40,5 +40,6 @@ void i_node_insert(const char *str, i_node *node){
     }
 
     ITAB[hval] = node;
+    node->ino = hval;
     printf("inode %s is inserted at index %d\n", str, hval);
 }

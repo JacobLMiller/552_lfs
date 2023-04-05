@@ -18,15 +18,22 @@
 extern int getuid();
 extern int getgid();
 
+/*Exposed from inode-tab.c*/
 extern void init_inode_tab();
-extern void i_node_insert(char *str, i_node *node);
+extern void i_node_insert(const char *str, i_node *node);
 extern i_node *i_node_lookup(const char *str);
+///////////////////////////
 
+/*Exposed from dir.c*/
+extern void append_file(i_node *root, i_node *new_node);
+////////////////////////
 
 /********************************************/
 
 static Flash FD;
-static sys_props LFS_props;
+static disk_data *data;
+static u_int ops_since_flush = 0;
+
 
 
 static struct fuse_operations ops = {
@@ -38,16 +45,18 @@ static struct fuse_operations ops = {
     .create    =     lfs_create,
     .utimens   =     lfs_time,
     .release   =     lfs_release,
+    .truncate  =     lfs_truncate,
 };
 
 
 static int lfs_getattr(const char *path, struct stat *st)
 {
-    printf("lfs_getattr: %s\n", path);
+    if (DEBUG)
+        printf("Called getattr on: %s\n", path);
 
     i_node *cur = i_node_lookup(path);
     if (cur == NULL){
-        printf("File not found\n");
+        // printf("File not found\n");
         return -ENOENT;
     }
 
@@ -63,9 +72,10 @@ static int lfs_getattr(const char *path, struct stat *st)
         st->st_nlink = 1;
         break;
     case FILE_TYPE:
-        st->st_mode = S_IFREG | 0644;
+        // st->st_mode = S_IFREG | 0644;
+        st->st_mode = S_IFREG | 0755;
         st->st_nlink = 1;
-        st->st_size = 4;
+        st->st_size = cur->meta->size;
         break;
     case LINK_TYPE:
         break;
@@ -83,16 +93,20 @@ static int lfs_readdir(const char *path, void *buffer,
                        fuse_fill_dir_t filler, off_t offset,
                        struct fuse_file_info *fi)
 {
-    printf("lfs_readdir; %s\n",path);
+    if(DEBUG)
+        printf("Called readdir on  %s\n",path);
 
     i_node *curdir = i_node_lookup(path);
-    char *mystr;
+    char * mystr, *splitstr;
     assert(curdir->meta->type == DIR_TYPE);
 
     i_node *curfile = curdir->next;
     while (curfile){
-        mystr = strtok(curfile->meta->name, "/");
-        filler(buffer,mystr,NULL,0);
+        mystr = (char *)malloc(sizeof(char) *25);
+        strcpy(mystr,curfile->meta->name);
+        splitstr = strtok(mystr, "/");
+        filler(buffer,splitstr,NULL,0);
+        free(mystr);
         curfile = curfile->next;
     }
 
@@ -105,8 +119,16 @@ static int lfs_read(const char *path,
                     char *buf, size_t size, off_t offset,
                     struct fuse_file_info *fi)
 {
+    if(DEBUG)
+        printf("Called read on  %s\n",path);
 
-    printf("lfs_read; %s\n",path);
+    i_node *file = i_node_lookup(path);
+    int fsize = file->meta->size;
+    if(fsize > 0){
+        memcpy(buf,file->buf,fsize);
+        return fsize;
+    }
+
     return 0;
 
 }
@@ -114,24 +136,46 @@ static int lfs_read(const char *path,
 static int lfs_write(const char *path,
                      const char *buf, size_t size, off_t offset,
                      struct fuse_file_info *fi)
-{
-    printf("writing %s\n", path);
+{   
+    if(DEBUG)
+        printf("Called write on %s\n", path);
+
+    i_node *file = i_node_lookup(path);
+    if (size <= 1024){
+        memcpy(file->buf,buf,size+1);
+        for (int i = 0; i < size; i++){
+            printf("%c",buf[i]);
+        }
+        file->meta->size = size;
+        return size;
+    }
+    else{
+        printf("too big: %ld\n", size);
+    }
+    
+
     return 0;
 }
 
 static int lfs_open(const char *path, struct fuse_file_info *fi)
 {
-    printf("open %s\n", path);
+    if(DEBUG)
+        printf("Called open on %s\n", path);
+    // i_node *ino = i_node_lookup(path);
+
     return 0;
 }
 
 static int lfs_create(const char *path, mode_t mt, struct fuse_file_info *fi){
-    printf("create %s\n", path);
+    if(DEBUG)
+        printf("Called create on %s\n", path);
+
     block_addr *new_addr; meta *new_meta; i_node *new_node;
     new_addr = malloc(sizeof(block_addr));
 
     new_meta = malloc(sizeof(meta));
     new_meta->type = FILE_TYPE;
+    new_meta->size = 0;
     set_name(new_meta,path);
 
     new_node = malloc(sizeof(i_node));
@@ -147,13 +191,25 @@ static int lfs_create(const char *path, mode_t mt, struct fuse_file_info *fi){
     return 0;
 }
 
-static int lfs_time(const char *path, const struct timespec *tv, struct fuse_file_info *fi){
+static int lfs_time(const char *path, const struct timespec *tv){
     return 0;
 }
 
 static int lfs_release(const char *path, struct fuse_file_info *fi){
+    if(DEBUG)
+        printf("Called release on %s\n", path);
     return 0;
 }
+
+static int lfs_truncate(const char *path, off_t size){
+    if(DEBUG)
+        printf("Called truncate on %s\n", path);
+
+    i_node *ino = i_node_lookup(path);
+    ino->meta->size = size;
+    return 0;
+}
+
 
 
 
@@ -166,14 +222,20 @@ static Flash load_device(char *fname){
     u_int blocks;
     Flash FD = Flash_Open(fname, 0, &blocks);
 
-    if (DEBUG)
+    if (DEBUG){
         printf("I have %d blocks\n",blocks);
-    
-    u_int head[FLASH_BLOCK_SIZE];
-    Flash_Read(FD,0,1,head);
-    LFS_props.n_segments = head[0];
-    LFS_props.block_size = head[1];
-    LFS_props.seg_size   = head[2];
+    }
+    char head[TOT_SECTORS*512];
+    Flash_Read(FD, 0,64,head);
+
+    data = (disk_data *)head;
+
+    if (DEBUG){
+        printf("Block size is %d\n", data->blocksize);
+        printf("Segment size is %d\n",data->segsize);
+        printf("Our current segment is %d\n",data->cur_sector);
+        printf("Our current block is %d\n",data->cur_block);
+    }
 
     return FD;
 
@@ -183,7 +245,7 @@ static void init_root(){
     init_inode_tab();
     block_addr *root_addr = malloc(sizeof(block_addr));
     root_addr->block = 0;
-    root_addr->page = 0;
+    root_addr->segment = 0;
     root_addr->is_null = false;
 
     meta *root_meta = malloc(sizeof(meta));
