@@ -56,7 +56,6 @@ static int lfs_getattr(const char *path, struct stat *st)
 
     i_node *cur = i_node_lookup(path);
     if (cur == NULL){
-        // printf("File not found\n");
         return -ENOENT;
     }
 
@@ -84,6 +83,8 @@ static int lfs_getattr(const char *path, struct stat *st)
         return -ENOENT;
         break;
     }
+
+
 
     return 0;
 
@@ -209,8 +210,6 @@ static int lfs_truncate(const char *path, off_t size){
     ino->meta->size = size;
     return 0;
 }
-
-
 
 
 static void set_name(meta *data, const char *path){
