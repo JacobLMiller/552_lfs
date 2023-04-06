@@ -7,6 +7,7 @@ typedef struct block_addr {
     unsigned int segment;
     unsigned int block;
     unsigned int sector;
+    unsigned int offset;
 } block_addr;
 
 typedef enum ftype{
@@ -25,7 +26,7 @@ typedef struct meta{
 
 
 typedef struct inode {
-    char         buf[1024];
+    char          buf[1024];
     block_addr   *ba;
     meta         *meta;
     unsigned int  ino;
@@ -41,4 +42,5 @@ typedef struct disk_data{
     unsigned int cur_block;
     unsigned int cur_segment;
     unsigned int table_size;
+    char        *fname;
 }disk_data;

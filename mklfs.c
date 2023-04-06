@@ -59,10 +59,26 @@ int main(int argc, char **argv){
     u_int wearlim = DEF_WEAR_LIM;
     u_int blocks;
 
-    //Quit if no file handle
-    if (argc < 2){
-        printf("Please provide name of flash device to be created\n");
+    if(argc < 2){
+        printf("No or invalid filename\n");
         return 1;
+    }
+
+    char *fname = argv[argc-1];
+
+    for(int i = 0; i < argc-1; i++){
+        if(strcmp(argv[i],"-b") == 0){
+            block_size = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i],"-l") == 0){
+            seg_size = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i],"-s") == 0){
+            n_segments = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i],"-w") == 0){
+            wearlim = atoi(argv[i+1]);
+        }   
     }
 
     //Check that size is valid 
@@ -71,14 +87,14 @@ int main(int argc, char **argv){
     }
 
     blocks = (block_size*seg_size*n_segments) / FLASH_SECTORS_PER_BLOCK;
-    int flash_device = Flash_Create(argv[1],wearlim,blocks);
+    int flash_device = Flash_Create(fname,wearlim,blocks);
 
     if (DEBUG){
         printf("Device creation was %s\n", flash_device == 0 ? "successful" : "unsuccessful");
-        printf("Device name is %s\n",argv[1]);
+        printf("Device name is %s\n",fname);
     }
 
-    fill_device(argv[1],n_segments,block_size,seg_size,wearlim);
+    fill_device(fname,n_segments,block_size,seg_size,wearlim);
 
     return flash_device;
 }

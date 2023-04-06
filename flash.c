@@ -399,6 +399,7 @@ Flash_Write(
         }
         if (state == FLASH_STATE_FULL) {
             rc = 1;
+            printf("Am I here?\n");
             errno = EIO;
             goto done;
         }

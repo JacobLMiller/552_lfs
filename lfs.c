@@ -4,7 +4,7 @@
 
 #define u_int unsigned int
 
-#define DEBUG 1
+#define DEBUG 0
 
 #define DEF_CP_INTERVAL 4
 #define DEF_CLEAN_START 4
@@ -13,6 +13,7 @@
 
 #include "flash.h"
 #include "types.h"
+#include "log.h"
 #include "lfs.h"
 
 extern int getuid();
@@ -22,19 +23,31 @@ extern int getgid();
 extern void init_inode_tab();
 extern void i_node_insert(const char *str, i_node *node);
 extern i_node *i_node_lookup(const char *str);
+extern i_node *create_inode(char *name, ftype type);
 ///////////////////////////
 
 /*Exposed from dir.c*/
 extern void append_file(i_node *root, i_node *new_node);
 ////////////////////////
 
+/*Exposed from log.c*/
+extern int log_write(i_node *ino);
+///////////////////////
+
 /********************************************/
 
 static Flash FD;
-static disk_data *data;
+extern disk_data *data;
+
 static u_int ops_since_flush = 0;
 
-
+static void inc_ops(){
+    ops_since_flush ++;
+    if (ops_since_flush > DEF_CP_INTERVAL){
+        printf("Need to flush\n");
+        ops_since_flush = 0;
+    }
+}
 
 static struct fuse_operations ops = {
     .getattr   =     lfs_getattr,
@@ -47,7 +60,6 @@ static struct fuse_operations ops = {
     .release   =     lfs_release,
     .truncate  =     lfs_truncate,
 };
-
 
 static int lfs_getattr(const char *path, struct stat *st)
 {
@@ -62,7 +74,7 @@ static int lfs_getattr(const char *path, struct stat *st)
     st->st_uid = getuid();
     st->st_gid = getgid();
 
-    st->st_atime = time(NULL);     // time: now
+    st->st_atime = time(NULL);
     st->st_mtime = time(NULL);
 
     switch (cur->meta->type){
@@ -71,20 +83,18 @@ static int lfs_getattr(const char *path, struct stat *st)
         st->st_nlink = 1;
         break;
     case FILE_TYPE:
-        // st->st_mode = S_IFREG | 0644;
-        st->st_mode = S_IFREG | 0755;
+        st->st_mode = S_IFREG | 0644;
+        // st->st_mode = S_IFREG | 0755;
         st->st_nlink = 1;
         st->st_size = cur->meta->size;
         break;
-    case LINK_TYPE:
+    case LINK_TYPE: //Unfinished; does tot handle links
         break;
     default:
         printf("I don't think I should ever be here\n");
         return -ENOENT;
         break;
     }
-
-
 
     return 0;
 
@@ -103,9 +113,9 @@ static int lfs_readdir(const char *path, void *buffer,
 
     i_node *curfile = curdir->next;
     while (curfile){
-        mystr = (char *)malloc(sizeof(char) *25);
+        mystr = (char *)malloc(sizeof(char) *1024);
         strcpy(mystr,curfile->meta->name);
-        splitstr = strtok(mystr, "/");
+        splitstr = strtok(mystr, "/"); //Will need to fix for arbitrary directory;
         filler(buffer,splitstr,NULL,0);
         free(mystr);
         curfile = curfile->next;
@@ -154,7 +164,7 @@ static int lfs_write(const char *path,
         printf("too big: %ld\n", size);
     }
     
-
+    inc_ops();
     return 0;
 }
 
@@ -162,7 +172,6 @@ static int lfs_open(const char *path, struct fuse_file_info *fi)
 {
     if(DEBUG)
         printf("Called open on %s\n", path);
-    // i_node *ino = i_node_lookup(path);
 
     return 0;
 }
@@ -171,23 +180,16 @@ static int lfs_create(const char *path, mode_t mt, struct fuse_file_info *fi){
     if(DEBUG)
         printf("Called create on %s\n", path);
 
-    block_addr *new_addr; meta *new_meta; i_node *new_node;
-    new_addr = malloc(sizeof(block_addr));
-
-    new_meta = malloc(sizeof(meta));
-    new_meta->type = FILE_TYPE;
-    new_meta->size = 0;
-    set_name(new_meta,path);
-
-    new_node = malloc(sizeof(i_node));
-    new_node->ba   = new_addr;
-    new_node->meta = new_meta;
-    new_node->next = NULL;
+    char *name = malloc(sizeof(char) * 25);
+    strcpy(name,path);
+    i_node *new_node = create_inode(name,FILE_TYPE);
 
     i_node_insert(path,new_node);
 
-    i_node *root = i_node_lookup("/");
+    i_node *root = i_node_lookup("/"); //Will need to fix for arbitrary directory; Get from string splitting.
     append_file(root,new_node);
+
+    inc_ops();
 
     return 0;
 }
@@ -208,14 +210,16 @@ static int lfs_truncate(const char *path, off_t size){
 
     i_node *ino = i_node_lookup(path);
     ino->meta->size = size;
+
+    inc_ops();
     return 0;
 }
 
 
-static void set_name(meta *data, const char *path){
-    data->name = malloc(sizeof(char) * 25);
-    strcpy(data->name, path);
-}
+// static void set_name(meta *data, const char *path){
+//     data->name = malloc(sizeof(char) * 25);
+//     strcpy(data->name, path);
+// }
 
 static Flash load_device(char *fname){
     u_int blocks;
@@ -228,6 +232,7 @@ static Flash load_device(char *fname){
     Flash_Read(FD, 0,64,head);
 
     data = (disk_data *)head;
+    data->fname = fname;
 
     if (DEBUG){
         printf("Block size is %d\n", data->blocksize);
@@ -242,28 +247,18 @@ static Flash load_device(char *fname){
 
 static void init_root(){
     init_inode_tab();
-    block_addr *root_addr = malloc(sizeof(block_addr));
-    root_addr->block = 0;
-    root_addr->segment = 0;
-    root_addr->is_null = false;
+    i_node *root = create_inode("/",DIR_TYPE);
+    i_node_insert("/", root);
 
-    meta *root_meta = malloc(sizeof(meta));
-    root_meta->type = DIR_TYPE;
-    root_meta->size = 12345;
-    root_meta->last_mod = 12;
-    root_meta->created = time(NULL);
+}
 
-    char *str = malloc(sizeof(char) * 5);
-    strcpy(str,"/");
-    root_meta->name = str;
-
-    i_node *root = malloc(sizeof(i_node));
-    root->ba = root_addr;
-    root->meta = root_meta;
-    root->next = NULL;
-
-    i_node_insert(str, root);
-
+static void test_write(){
+    i_node *ino = create_inode("test",FILE_TYPE);
+    for (int i = 0; i < 1024; i++){
+        ino->buf[i] = 'a';
+    }
+    printf("My dummy node contains %s\n",ino->buf);
+    log_write(ino);
 }
 
 int main(int argc, char **argv){
@@ -274,23 +269,38 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    FD = load_device(argv[1]);
+    char *devicename = argv[argc-2];
+    char *mntpnt     = argv[argc-1];
+
+    for(int i = 0; i < argc-1; i++){
+        if(strcmp(argv[i],"-i") == 0){
+            //cpnt_interval = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i],"-c") == 0){
+            //cln_thrshld = atoi(argv[i+1]);
+        }
+        else if (strcmp(argv[i],"-C") == 0){
+            //stp_thrshld = (argv[i+1]);
+        }
+    }    
+
+    FD = load_device(devicename);
+    Flash_Close(FD);
     init_root();
 
-    char *fuseargs[4] = {
-        "Jacob program",
-        argv[2],
+    test_write();
+
+    #define N_ARGS 4
+    char *fuseargs[N_ARGS] = {
+        "fuse_sys",
+        mntpnt,
         "-f",
-        "-s"
+        "-s",
+        // "-o auto_cache"
+        // "-d"
     };
-    // fuseargs[0] = "Jacob program";
-    // fuseargs[1] = argv[2];
-    // fuseargs[2] = "-f";
 
-    fuse_main(4,fuseargs, &ops, NULL);
-
-
-    
+    fuse_main(N_ARGS,fuseargs, &ops, NULL);
 
     return 0;
 }
