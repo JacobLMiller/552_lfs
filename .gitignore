@@ -1,5 +1,11 @@
 flash.c 
 flash.h
+dump_flash*
+myfile
+*.fl 
+lfs 
+mklfs 
+
 
 
 # Prerequisites
