@@ -3,11 +3,9 @@
 #define TOT_SECTORS 64
 
 typedef struct block_addr {
-    bool         is_null;
-    unsigned int segment;
-    unsigned int block;
-    unsigned int sector;
-    unsigned int offset;
+    char              *buf;
+    unsigned int       segment;
+    unsigned int       block;
 } block_addr;
 
 typedef enum ftype{
@@ -21,13 +19,13 @@ typedef struct meta{
     unsigned int size;
     unsigned int last_mod;
     unsigned int created;
+    unsigned int num_blocks;
     char   *name;
 } meta;
 
 
 typedef struct inode {
-    char          buf[1024];
-    block_addr   *ba;
+    block_addr    addrs[8];
     meta         *meta;
     unsigned int  ino;
     struct inode *next;
@@ -44,3 +42,11 @@ typedef struct disk_data{
     unsigned int table_size;
     char        *fname;
 }disk_data;
+
+typedef struct seg_data{
+    bool         written;
+    unsigned int segno;
+    unsigned int fill_blocks;
+    unsigned int arr_num[32];
+    i_node      *ino_arr[32];
+}seg_data;

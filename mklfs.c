@@ -16,11 +16,10 @@
 
 
 #include <unistd.h>
-// #include <malloc.h>
 #include "flash.h"
 #include "types.h"
 
-int totalsectors = 64;
+int totalsectors = TOT_SECTORS;
 
 void fill_device(char *fname,u_int n_segments, u_int block_size, u_int seg_size,u_int wearlimit){
     u_int blocks;
@@ -83,7 +82,7 @@ int main(int argc, char **argv){
 
     //Check that size is valid 
     if (seg_size < 3 || seg_size % FLASH_SECTORS_PER_BLOCK != 0){
-        printf("Invalid segment size; Must >=3 and int multiple of %d",FLASH_SECTORS_PER_BLOCK);
+        printf("Invalid segment size; Must >=3 and int multiple of %d\n",FLASH_SECTORS_PER_BLOCK);
     }
 
     blocks = (block_size*seg_size*n_segments) / FLASH_SECTORS_PER_BLOCK;

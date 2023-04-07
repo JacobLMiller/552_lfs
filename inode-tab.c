@@ -1,4 +1,6 @@
 #include "types.h"
+#include "flash.h"
+#include "log.h"
 
 #define NUM_BUCKETS 256
 
@@ -8,8 +10,15 @@ typedef struct inode_container{
 }inocon;
 
 static inocon *ITAB[NUM_BUCKETS];
+static seg_data **SEGTAB;
+
+extern disk_data *data;
 
 static u_int avail_inum = 0;
+
+extern u_int get_cur_segment();
+extern u_int get_cur_block();
+extern int log_write(char *arr);
 
 static int hash(const char *s){
     int i = 0;
@@ -19,6 +28,67 @@ static int hash(const char *s){
     return i % NUM_BUCKETS;
 }
 
+static seg_data *allocate_segment(int segno){
+    SEGTAB[segno] = malloc(sizeof(seg_data));
+    seg_data *segment = SEGTAB[segno];
+    segment->segno = segno;
+    segment->fill_blocks = 0;
+    segment->written     = false;
+
+    return segment;
+}
+
+static void add_ino_to_segdata(i_node *ino, int off_num){
+    seg_data *segment;
+    int segno = ino->addrs[off_num].segment;
+    if(SEGTAB[segno] == NULL){
+        segment = allocate_segment(segno);
+    }else{
+        segment = SEGTAB[segno];
+    }
+
+    int block_num = ino->addrs[off_num].block;
+    segment->arr_num[block_num] = off_num;
+    segment->ino_arr[block_num] = ino;
+    segment->fill_blocks++;
+
+}
+
+void init_seg_tab(){
+    int n_segs = data->disksize;
+    SEGTAB = malloc(sizeof(*SEGTAB) * n_segs);
+    for(int i = 0; i < n_segs; i++){
+        SEGTAB[i] = NULL;
+    }
+
+    seg_data *segment = allocate_segment(0);
+    segment->fill_blocks = 32;
+}
+
+
+void flush_to_log(){
+    for (int j = 1; j < data->disksize; j++){
+        if(SEGTAB[j] != NULL && SEGTAB[j]->fill_blocks >= data->segsize && SEGTAB[j]->written == false){
+            seg_data *segment = SEGTAB[data->cur_segment];
+            char *disk_buf = malloc(sizeof(char) * data->segsize * data->blocksize * FLASH_SECTOR_SIZE);
+
+            printf("J is %d\n",j);
+            for (int i = 0; i < data->segsize; i++){
+                printf("I is %d\n",i);
+                printf("%d\n",segment->ino_arr[i]->addrs[0].buf == NULL);
+                // printf("I want to write %s\n",segment->ino_arr[i]->addrs[0].buf);
+                strcat(disk_buf, segment->ino_arr[i]->addrs[0].buf);
+            }
+
+            log_write(disk_buf);
+
+            free(disk_buf);
+            segment->written = true;
+        }
+    }
+}
+
+
 void init_inode_tab(){
     for (int i = 0; i < NUM_BUCKETS; i++)
         ITAB[i] = NULL;    
@@ -26,7 +96,13 @@ void init_inode_tab(){
 
 
 static void set_block_addr(block_addr *ba){
-    
+    ba->segment = get_cur_segment();    
+    ba->block = get_cur_block();
+
+    int bsize_bytes = data->blocksize * FLASH_SECTOR_SIZE;
+    ba->buf = malloc(sizeof(char) * bsize_bytes);
+    for (int i = 0; i < bsize_bytes; i++)
+        ba->buf[i] = 'a';
 }
 
 i_node *create_inode(char *name, ftype type){
@@ -36,17 +112,20 @@ i_node *create_inode(char *name, ftype type){
 
     set_block_addr(ino_addr);
 
-    ino_meta->type     = type;
-    ino_meta->size     = 0;
-    ino_meta->last_mod = time(NULL);
-    ino_meta->created  = time(NULL);
-    ino_meta->name     = name;
+    ino_meta->type       = type;
+    ino_meta->size       = 0;
+    ino_meta->last_mod   = time(NULL);
+    ino_meta->created    = time(NULL);
+    ino_meta->num_blocks = 1;
+    ino_meta->name       = name;
 
-    ino->ba   = ino_addr;
+    ino->addrs[0] = *ino_addr;
     ino->meta = ino_meta;
     ino->next = NULL;
     ino->ino  = avail_inum;
     avail_inum++;
+
+    add_ino_to_segdata(ino,0);
 
     return ino;
 }
@@ -95,3 +174,4 @@ void i_node_insert(const char *str, i_node *node){
     }
 
 }
+

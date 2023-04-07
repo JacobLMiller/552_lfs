@@ -4,9 +4,10 @@ import random
 words = "42 cat dog orange tomato blue frog fromg froMg".split(" ")
 
 #Add sha256, echo, cat, diff, etc. to test script
+run = os.system
 
-if __name__ == "__main__":
-    run = os.system
+
+def init_test():
     
     os.chdir("tmp")
     for i in range(5):
@@ -28,7 +29,26 @@ if __name__ == "__main__":
         f.write(f" {i} \n")
         f.close()
 
+
+    f = open("og",'w')
+    f.write("I am copied.\n")
+    f.close()
+
+    run("cp og cpy")
+    run("cat cpy")
+
     run("touch bigfile")
     f = open("bigfile", 'w')
     f.write(" ".join( words[random.randint(0,len(words)-1)] for _ in range(1000) )  )
+    f.close()    
+
+if __name__ == "__main__":
+
+    os.chdir("tmp")
+    f = open("ah", "w")
+    f.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n")
     f.close()
+    for i in range(16):
+        run(f"touch foo{i}")
+    for i in range(16):
+        run(f"touch bar{i}")

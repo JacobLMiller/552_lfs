@@ -4,7 +4,7 @@
 
 #define u_int unsigned int
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define DEF_CP_INTERVAL 4
 #define DEF_CLEAN_START 4
@@ -21,9 +21,11 @@ extern int getgid();
 
 /*Exposed from inode-tab.c*/
 extern void init_inode_tab();
+extern void init_seg_tab();
 extern void i_node_insert(const char *str, i_node *node);
 extern i_node *i_node_lookup(const char *str);
 extern i_node *create_inode(char *name, ftype type);
+extern void flush_to_log();
 ///////////////////////////
 
 /*Exposed from dir.c*/
@@ -31,7 +33,7 @@ extern void append_file(i_node *root, i_node *new_node);
 ////////////////////////
 
 /*Exposed from log.c*/
-extern int log_write(i_node *ino);
+extern int log_write(char *arr);
 ///////////////////////
 
 /********************************************/
@@ -44,7 +46,8 @@ static u_int ops_since_flush = 0;
 static void inc_ops(){
     ops_since_flush ++;
     if (ops_since_flush > DEF_CP_INTERVAL){
-        printf("Need to flush\n");
+        // printf("Need to flush\n");
+        flush_to_log();
         ops_since_flush = 0;
     }
 }
@@ -135,10 +138,15 @@ static int lfs_read(const char *path,
 
     i_node *file = i_node_lookup(path);
     int fsize = file->meta->size;
-    if(fsize > 0){
-        memcpy(buf,file->buf,fsize);
+    if(fsize > 0 && fsize <= 1024){
+        memcpy(buf,file->addrs[0].buf,fsize);
         return fsize;
     }
+    else if (fsize > 1024){
+        printf("big file\n");
+        return -2;
+    }
+    
 
     return 0;
 
@@ -153,10 +161,7 @@ static int lfs_write(const char *path,
 
     i_node *file = i_node_lookup(path);
     if (size <= 1024){
-        memcpy(file->buf,buf,size+1);
-        for (int i = 0; i < size; i++){
-            printf("%c",buf[i]);
-        }
+        memcpy(file->addrs[0].buf,buf,size+1);
         file->meta->size = size;
         return size;
     }
@@ -228,8 +233,8 @@ static Flash load_device(char *fname){
     if (DEBUG){
         printf("I have %d blocks\n",blocks);
     }
-    char head[TOT_SECTORS*512];
-    Flash_Read(FD, 0,64,head);
+    char *head = malloc(TOT_SECTORS * FLASH_SECTOR_SIZE);
+    Flash_Read(FD, 0,TOT_SECTORS,head);
 
     data = (disk_data *)head;
     data->fname = fname;
@@ -240,6 +245,9 @@ static Flash load_device(char *fname){
         printf("Our current segment is %d\n",data->cur_sector);
         printf("Our current block is %d\n",data->cur_block);
     }
+
+    init_seg_tab();
+
 
     return FD;
 
@@ -252,14 +260,6 @@ static void init_root(){
 
 }
 
-static void test_write(){
-    i_node *ino = create_inode("test",FILE_TYPE);
-    for (int i = 0; i < 1024; i++){
-        ino->buf[i] = 'a';
-    }
-    printf("My dummy node contains %s\n",ino->buf);
-    log_write(ino);
-}
 
 int main(int argc, char **argv){
 
@@ -288,7 +288,6 @@ int main(int argc, char **argv){
     Flash_Close(FD);
     init_root();
 
-    test_write();
 
     #define N_ARGS 4
     char *fuseargs[N_ARGS] = {
