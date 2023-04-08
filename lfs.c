@@ -4,7 +4,7 @@
 
 #define u_int unsigned int
 
-#define DEBUG 1
+#define DEBUG 0
 
 #define DEF_CP_INTERVAL 4
 #define DEF_CLEAN_START 4
@@ -161,8 +161,11 @@ static int lfs_write(const char *path,
 
     i_node *file = i_node_lookup(path);
     if (size <= 1024){
-        memcpy(file->addrs[0].buf,buf,size+1);
+        memcpy(file->addrs[0].buf,buf,size);
         file->meta->size = size;
+        // for(int i = size+1; i < 1024; i++){
+        //     file->addrs[0].buf[i] = 'a';
+        // }
         return size;
     }
     else{

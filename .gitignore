@@ -5,6 +5,8 @@ myfile
 *.fl 
 lfs 
 mklfs 
+.vscode/
+tmp/
 
 
 

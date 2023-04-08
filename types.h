@@ -17,8 +17,6 @@ typedef enum ftype{
 typedef struct meta{
     ftype        type;
     unsigned int size;
-    unsigned int last_mod;
-    unsigned int created;
     unsigned int num_blocks;
     char   *name;
 } meta;
@@ -47,6 +45,6 @@ typedef struct seg_data{
     bool         written;
     unsigned int segno;
     unsigned int fill_blocks;
-    unsigned int arr_num[32];
-    i_node      *ino_arr[32];
+    unsigned int *arr_num;
+    i_node      **ino_arr;
 }seg_data;

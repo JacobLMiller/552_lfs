@@ -44,3 +44,8 @@ int log_write(char *arr){
     return 0;
 }
 
+int make_cp(){
+    
+
+    return 0;
+}

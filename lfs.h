@@ -20,5 +20,5 @@ static int lfs_truncate(const char *path, off_t size);
 
 
 static Flash load_device(char *fname);
-// static void set_name(meta *data, const char *path);
 static void init_root();
+static void inc_ops();
