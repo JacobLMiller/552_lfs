@@ -4,7 +4,7 @@
 
 #define u_int unsigned int
 
-#define DEBUG 0
+#define DEBUG 1
 
 #define DEF_CP_INTERVAL 4
 #define DEF_CLEAN_START 4
@@ -35,6 +35,8 @@ extern void append_file(i_node *root, i_node *new_node);
 /*Exposed from log.c*/
 extern int log_write(char *arr);
 ///////////////////////
+
+extern int BUGGY_crc(void *buf_void, int len);
 
 /********************************************/
 
@@ -224,10 +226,13 @@ static int lfs_truncate(const char *path, off_t size){
 }
 
 
-// static void set_name(meta *data, const char *path){
-//     data->name = malloc(sizeof(char) * 25);
-//     strcpy(data->name, path);
-// }
+typedef struct russ_header{
+    char        magic[8];
+    int         version;
+    int         blocksize;
+    int         segsize;
+    int         crc;
+}russ_header;
 
 static Flash load_device(char *fname){
     u_int blocks;
@@ -239,17 +244,21 @@ static Flash load_device(char *fname){
     char *head = malloc(TOT_SECTORS * FLASH_SECTOR_SIZE);
     Flash_Read(FD, 0,TOT_SECTORS,head);
 
-    data = (disk_data *)head;
-    data->fname = fname;
+    russ_header *data = (russ_header *)head;
+    // data->fname = fname;
 
     if (DEBUG){
+        printf("Magic string is %s\n",data->magic);
+        printf("Version is %d\n",data->version);
         printf("Block size is %d\n", data->blocksize);
         printf("Segment size is %d\n",data->segsize);
-        printf("Our current segment is %d\n",data->cur_sector);
-        printf("Our current block is %d\n",data->cur_block);
+        printf("crc is %d\n",data->crc);
+        printf("Running buggy_crc gets us %d\n",BUGGY_crc());
+        // printf("Our current segment is %d\n",data->cur_sector);
+        // printf("Our current block is %d\n",data->cur_block);
     }
 
-    init_seg_tab();
+    // init_seg_tab();
 
 
     return FD;
@@ -289,7 +298,7 @@ int main(int argc, char **argv){
 
     FD = load_device(devicename);
     Flash_Close(FD);
-    init_root();
+    // init_root();
 
 
     #define N_ARGS 4
@@ -302,7 +311,7 @@ int main(int argc, char **argv){
         // "-d"
     };
 
-    fuse_main(N_ARGS,fuseargs, &ops, NULL);
+    // fuse_main(N_ARGS,fuseargs, &ops, NULL);
 
     return 0;
 }

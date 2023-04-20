@@ -3,7 +3,7 @@ CFLAGS= -Wall -D_FILE_OFFSET_BITS=64 -lfuse
 # CFLAGS= -Wall `pkg-config fuse3 --cflags --libs`
 DEPS = global.h types.h log.h lfs.h
 OBJ_MKLFS = flash.o mklfs.o
-OBJ_LFS = flash.o log.o inode-tab.o dir.o lfs.o
+OBJ_LFS = buggy_crc.o flash.o log.o inode-tab.o dir.o lfs.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
