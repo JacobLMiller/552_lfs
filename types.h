@@ -1,50 +1,73 @@
 #include "global.h"
 
 #define TOT_SECTORS 64
+#define u_char unsigned char
 
-typedef struct block_addr {
-    char              *buf;
-    unsigned int       segment;
-    unsigned int       block;
-} block_addr;
+typedef enum ftype {
+    NOFILE,
+    FILE_TYPE,
+    DIR_TYPE,
+    SYM_LINK,
+    SPECIAL,
+    RESERVED,
+    DEAD
+}ftype;
 
-typedef enum ftype{
-    FILE_TYPE, 
-    DIR_TYPE, 
-    LINK_TYPE
-} ftype;
-
-typedef struct meta{
-    ftype        type;
-    unsigned int size;
-    unsigned int num_blocks;
-    char   *name;
-} meta;
+typedef struct disk_header{
+    char        magic[8];
+    int         version;
+    int         blocksize;
+    int         segsize;
+    int         crc;
+}disk_header;
 
 
-typedef struct inode {
-    block_addr    addrs[8];
-    meta         *meta;
-    unsigned int  ino;
-    struct inode *next;
-} i_node;
+typedef struct checkpoint{
+    char        magic[4];
+    int         padding;
+    long        seq_num;
+    long        block_address;
+    int         crc;
+}checkpoint;
 
-typedef struct disk_data{
-    unsigned int blocksize;
-    unsigned int segsize;
-    unsigned int disksize;
-    unsigned int wearlimit;
-    unsigned int cur_sector;
-    unsigned int cur_block;
-    unsigned int cur_segment;
-    unsigned int table_size;
-    char        *fname;
-}disk_data;
+typedef struct segment_header{
+    char        magic[4];
+    u_char      pad[4];
+    long        seq_num;
+    int         crc;
+}segment_header;
 
-typedef struct seg_data{
-    bool         written;
-    unsigned int segno;
-    unsigned int fill_blocks;
-    unsigned int *arr_num;
-    i_node      **ino_arr;
-}seg_data;
+typedef struct Segment {
+    long        inum;
+    long        block_num;
+}Segment;
+
+typedef struct segment_data{
+    segment_header       header;
+    u_char               pad[4];
+    u_char               reserved[8];
+    int                  crc;
+    u_char               pad2[4];
+    Segment              MetaData[];
+    // char                 *padding;
+}segment_data;
+
+typedef struct inod{
+    char        magic[4];
+    ftype       type;
+    long        mode;
+    long        num_links;
+    int         uid;
+    int         gid;
+    long        size;
+    long        direct_addr[12];
+    long        first_level;
+    long        second_level;
+    long        third_level;
+    long        fourth_level;
+}inod;
+
+typedef struct dir_entry{
+    int         inum;
+    char        name[252];
+}dir_entry;
