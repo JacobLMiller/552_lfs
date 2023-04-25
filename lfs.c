@@ -38,6 +38,7 @@ static void read_file(inod *ino, u_int size, char *buf){
 static void read_inod_tab(long addr){
     char *buf = malloc(data->blocksize * FLASH_SECTOR_SIZE);
     Flash_Read(FD,data->blocksize * addr, data->blocksize, buf);
+    
 }
 
 static void load_from_cpt(checkpoint *cpt){
