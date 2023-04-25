@@ -7,6 +7,7 @@ lfs
 mklfs 
 .vscode/
 tmp/
+*.img
 
 
 
