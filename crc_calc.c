@@ -1,10 +1,13 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #define MAGIC_STRING "RUSS_LFS"
 #define LFS_VERSION 1
+#define uint32_t unsigned int
 
-typedef struct {
+typedef struct DiskHeader{
   char magic[8];
   uint32_t version;
   uint32_t block_size;
@@ -12,7 +15,7 @@ typedef struct {
   uint32_t crc;
 } DiskHeader;
 
-typedef struct {
+typedef struct Checkpoint{
   char magic[4];
   char pad[4];
   uint32_t seq_num;
@@ -31,6 +34,7 @@ int main() {
 
   // read Disk Header from disk
   // assume that data is read into a buffer called 'buffer'
+  char *buffer = malloc(sizeof(DiskHeader));
   memcpy(&header, buffer, sizeof(DiskHeader));
 
   // check if magic string matches

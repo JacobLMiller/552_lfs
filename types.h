@@ -2,6 +2,7 @@
 
 #define TOT_SECTORS 64
 #define u_char unsigned char
+#define DIR_BLKS 12
 
 typedef enum ftype {
     NOFILE,
@@ -60,7 +61,7 @@ typedef struct inod{
     int         uid;
     int         gid;
     long        size;
-    long        direct_addr[12];
+    long        direct_addr[DIR_BLKS];
     long        first_level;
     long        second_level;
     long        third_level;

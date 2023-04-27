@@ -10,8 +10,6 @@
 #include "log.h"
 #include "lfs.h"
 
-#define DEBUG 1
-
 #define DEF_CP_INTERVAL 4
 #define DEF_CLEAN_START 4
 #define DEF_CLEAN_STOP  8
@@ -21,97 +19,137 @@
 extern int getuid();
 extern int getgid();
 
-extern int BUGGY_crc(void *buf_void, int len);
-
+/*Exposed from dir.c*/
+extern inod *lookup(const char *path, int inum);
 /********************************************/
 
-static Flash FD; 
-static disk_header *data;
-static inod *inode_tab;
-static int tab_size;
-static int bsize_bytes;
+/*Exposed from init.c*/
+extern void load_lfs(char *fname);
+extern void read_file(inod *ino, char *buf,int num_blocks);
+extern Flash FD; 
+extern disk_header *data;
+extern inod *inode_tab;
+extern int tab_size;
+extern int bsize_bytes;
+extern int K;
+/*********************/
 
-static void read_file(inod *ino, u_int size, char *buf){
+static struct fuse_operations ops = {
+    .getattr   =     lfs_getattr,
+    .readdir   =     lfs_readdir,
+    .read      =     lfs_read,
+    .write     =     lfs_write,
+    .open      =     lfs_open,
+    .create    =     lfs_create,
+    .utimens   =     lfs_time,
+    .release   =     lfs_release,
+    .truncate  =     lfs_truncate,
+};
 
-}
 
-static void read_inod_tab(long addr){
-    char *buf = malloc(data->blocksize * FLASH_SECTOR_SIZE);
-    Flash_Read(FD,data->blocksize * addr, data->blocksize, buf);
-    
-}
 
-static void load_from_cpt(checkpoint *cpt){
-    printf("Block 0 can be found at address %ld\n",cpt->block_address);
-    //Read in inode0
-    char *buf = malloc(data->blocksize * FLASH_SECTOR_SIZE);
-    Flash_Read(FD,data->blocksize * cpt->block_address,data->blocksize,buf);
-    inod *ino = (inod *)buf;
-    ino->direct_addr[0] = cpt->block_address;
+static int lfs_getattr(const char *path, struct stat *st){
+    if (DEBUG)
+        printf("Called getattr on: %s\n", path);
 
-    //Allocate enough memory to inode_tab for all inodes
-    int num_blocks = ino->size / bsize_bytes;
-    if (ino->size % bsize_bytes != 0)
-        num_blocks++;
-    int num_inod_per_block = bsize_bytes/sizeof(inod);
-    tab_size = num_inod_per_block * num_blocks;
-    inode_tab = malloc(tab_size * sizeof(inod));
-
-    for(int i = 0; i < 12 || i < num_blocks; i++){
-        read_inod_tab(ino->direct_addr[i]);
-    }
-}
-
-static Flash load_device(char *fname){
-    u_int blocks;
-    FD = Flash_Open(fname, 1, &blocks);
-
-    if (DEBUG){
-        printf("I have %d blocks\n",blocks);
-    }
-    char *head = malloc(ALLOC_SIZE);
-    Flash_Read(FD, 0,FLASH_SECTORS_PER_BLOCK,head);
-
-    data = (disk_header *)head;
-    if (DEBUG){
-        printf("Magic string is %s\n",data->magic);
-        printf("Version is %d\n",data->version);
-        printf("Block size is %d\n", data->blocksize);
-        printf("Segment size is %d\n",data->segsize);
-        printf("crc is %d\n",data->crc);
+    inod *ino = lookup(path, 1);
+    if (ino == NULL){
+        return -ENOENT;
     }
 
-    bsize_bytes = data->blocksize * ALLOC_SIZE;
-    // free(head);
-    
-    char *buf1 = malloc(ALLOC_SIZE);
-    char *buf2 = malloc(ALLOC_SIZE);
-    Flash_Read(FD,FLASH_SECTORS_PER_BLOCK,FLASH_SECTORS_PER_BLOCK,buf1);
-    Flash_Read(FD,2*FLASH_SECTORS_PER_BLOCK,FLASH_SECTORS_PER_BLOCK,buf2);
-    checkpoint *cp1 = (checkpoint *)buf1;
-    checkpoint *cp2 = (checkpoint *)buf2;
+    st->st_uid = getuid();
+    st->st_gid = getgid();
 
-    if(cp1->seq_num > cp2->seq_num){
-        load_from_cpt(cp1);
+    st->st_atime = time(NULL);
+    st->st_mtime = time(NULL);
+
+    switch (ino->type){
+    case DIR_TYPE:
+        st->st_mode = S_IFDIR | 0755;
+        st->st_nlink = 1;
+        break;
+    case FILE_TYPE:
+        st->st_mode = S_IFREG | 0644;
+        // st->st_mode = S_IFREG | 0755;
+        st->st_nlink = 1;
+        st->st_size = ino->size;
+        break;
+    case SYM_LINK: //Unfinished; does tot handle links
+        break;
+    default:
+        printf("I don't think I should ever be here\n");
+        return -ENOENT;
+        break;
     }
-    else{
-        load_from_cpt(cp2);
-    }
-    free(buf1);
-    free(buf2);
-    
 
-    return FD;
-
+    return 0;
 }
 
-void read_segment(int seqnum){
-    char *buf = malloc(sizeof(segment_header));
-    Flash_Read(FD,seqnum * data->blocksize * data->segsize ,FLASH_SECTORS_PER_BLOCK,buf);
-    segment_header *head = (segment_header *)buf;
-    printf("Segment is %s\n",head->magic);    
+static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
+    if (DEBUG)
+        printf("Called readdir on: %s\n", path);
 
+    inod *dir = lookup(path,1);
+    assert(dir->type == DIR_TYPE);
+
+
+    int num_entries = dir->size / sizeof(dir_entry);
+    int num_blocks = (dir->size / bsize_bytes) + 1;
+    char *dir_buf = malloc(num_blocks * bsize_bytes);
+    read_file(dir,dir_buf,num_blocks);
+    dir_entry *children = (dir_entry *)dir_buf;
+
+    for (int i=0; i<num_entries;i++){
+        filler(buffer,children[i].name,NULL,0);
+    }
+    free(children);
+
+    return 0;
 }
+
+static int lfs_read(const char *path,char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
+    if (DEBUG)
+        printf("Called read on %s\n",path);
+
+    inod *ino = lookup(path,1);
+    int num_blocks = (ino->size / bsize_bytes) + 1;
+    char *fbuf = malloc(num_blocks * bsize_bytes);
+    read_file(ino,fbuf,num_blocks);
+    memcpy(buf,fbuf,ino->size);
+    free(fbuf);
+
+    return ino->size;
+}
+
+static int lfs_write(const char *path, const char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
+    printf("write was called\n");
+    return 0;
+}
+
+static int lfs_open(const char *path, struct fuse_file_info *fi){
+    printf("open was called on %s\n",path);
+    return 0;
+}
+
+static int lfs_create(const char *path, mode_t mt, struct fuse_file_info *fi){
+    printf("create was called\n");
+    return 0;
+}
+
+static int lfs_time(const char *path, const struct timespec *tv){
+    return 0;
+}
+
+static int lfs_release(const char *path, struct fuse_file_info *fi){
+    printf("release was called\n");
+    return 0;
+}
+
+static int lfs_truncate(const char *path, off_t size){
+    printf("truncate was called\n");
+    return 0;
+}
+
 
 int main(int argc, char **argv){
 
@@ -136,22 +174,20 @@ int main(int argc, char **argv){
         }
     }    
 
-    FD = load_device(devicename);
-    read_segment(1);
-    Flash_Close(FD);
+    load_lfs(devicename);
 
 
-    // #define N_ARGS 4
-    // char *fuseargs[N_ARGS] = {
-    //     "fuse_sys",
-    //     mntpnt,
-    //     "-f",
-    //     "-s",
-    //     // "-o auto_cache"
-    //     // "-d"
-    // };
+    #define N_ARGS 4
+    char *fuseargs[N_ARGS] = {
+        "fuse_sys",
+        mntpnt,
+        "-f",
+        "-s",
+        // "-o auto_cache"
+        // "-d"
+    };
 
-    // fuse_main(N_ARGS,fuseargs, &ops, NULL);
+    fuse_main(N_ARGS,fuseargs, &ops, NULL);
 
     return 0;
 }

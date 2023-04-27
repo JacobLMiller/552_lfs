@@ -8,6 +8,7 @@
 #include <malloc.h>
 #include <fuse.h>
 
+#define DEBUG 1
 
 #define u_int unsigned int
 
