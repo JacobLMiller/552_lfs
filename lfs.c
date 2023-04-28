@@ -43,6 +43,7 @@ static struct fuse_operations ops = {
     .utimens   =     lfs_time,
     .release   =     lfs_release,
     .truncate  =     lfs_truncate,
+    .readlink  =     lfs_readlink,
 };
 
 static int lfs_getattr(const char *path, struct stat *st){
@@ -73,7 +74,7 @@ static int lfs_getattr(const char *path, struct stat *st){
         break;
     case SYM_LINK: //Unfinished; does tot handle links
         st->st_nlink = ino->num_links;
-        st->st_mode = S_IFREG | 0644;
+        st->st_mode = S_IFLNK | 0644;
         break;
     default:
         printf("I don't think I should ever be here\n");
@@ -106,11 +107,28 @@ static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, o
     return 0;
 }
 
+static int lfs_readlink(const char *path, char *buf, size_t size){
+    if(DEBUG)
+        printf("Called readlink on %s\n",path);
+    
+    inod *ino = lookup(path,1);
+
+    int num_blocks = (ino->size / bsize_bytes) + 1;
+    char *fbuf = malloc(num_blocks * bsize_bytes);
+    read_file(ino,fbuf,num_blocks);
+    memcpy(buf,fbuf,ino->size);
+    free(fbuf);
+
+
+    return 0;
+}
+
 static int lfs_read(const char *path,char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
     if (DEBUG)
         printf("Called read on %s\n",path);
 
     inod *ino = lookup(path,1);
+
     int num_blocks = (ino->size / bsize_bytes) + 1;
     char *fbuf = malloc(num_blocks * bsize_bytes);
     read_file(ino,fbuf,num_blocks);
