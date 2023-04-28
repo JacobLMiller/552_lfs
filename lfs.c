@@ -9,10 +9,6 @@
 #include "types.h"
 #include "lfs.h"
 
-#define DEF_CP_INTERVAL 4
-#define DEF_CLEAN_START 4
-#define DEF_CLEAN_STOP  8
-
 #define ALLOC_SIZE FLASH_SECTORS_PER_BLOCK*FLASH_SECTOR_SIZE
 
 extern int getuid();
@@ -185,20 +181,7 @@ int main(int argc, char **argv){
     char *devicename = argv[argc-2];
     char *mntpnt     = argv[argc-1];
 
-    for(int i = 0; i < argc-1; i++){
-        if(strcmp(argv[i],"-i") == 0){
-            //cpnt_interval = atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i],"-c") == 0){
-            //cln_thrshld = atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i],"-C") == 0){
-            //stp_thrshld = (argv[i+1]);
-        }
-    }    
-
     load_lfs(devicename);
-
 
     #define N_ARGS 4
     char *fuseargs[N_ARGS] = {
@@ -210,7 +193,6 @@ int main(int argc, char **argv){
         // "-d"
     };
 
-    fuse_main(N_ARGS,fuseargs, &ops, NULL);
+    return fuse_main(N_ARGS,fuseargs, &ops, NULL);
 
-    return 0;
 }
