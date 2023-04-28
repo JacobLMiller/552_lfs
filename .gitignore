@@ -8,6 +8,8 @@ mklfs
 .vscode/
 tmp/
 *.img
+russ_test.c
+buggy_crc.c
 
 
 

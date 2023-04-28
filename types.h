@@ -5,7 +5,7 @@
 #define DIR_BLKS 12
 
 typedef enum ftype {
-    NOFILE,
+    NO_USE,
     FILE_TYPE,
     DIR_TYPE,
     SYM_LINK,

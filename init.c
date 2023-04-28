@@ -72,7 +72,9 @@ void read_file(inod *ino, char *buf,int num_blocks){
 
 
 static void load_from_cpt(checkpoint *cpt){
-    printf("Block 0 can be found at address %ld\n",cpt->block_address);
+    if (DEBUG)
+        printf("Block 0 can be found at address %ld\n",cpt->block_address);
+        
     //Read in inode0
     char *buf = malloc(bsize_bytes);
     Flash_Read(FD,data->blocksize * cpt->block_address,data->blocksize,buf);

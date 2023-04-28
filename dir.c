@@ -5,6 +5,9 @@ extern inod *inode_tab;
 extern int bsize_bytes;
 extern void read_file(inod *ino, char *buf, int num_blocks);
 
+extern inod *i_node_lookup(const char *str);
+extern void i_node_insert(const char *str, inod *node);
+
 dir_entry *read_dir(inod *dir,int *num_children){
     *num_children = dir->size / sizeof(dir_entry);
     int num_blocks = (dir->size / bsize_bytes) + 1;
@@ -14,35 +17,17 @@ dir_entry *read_dir(inod *dir,int *num_children){
     return children;
 }
 
-// static char *extractSubstring(char* inputString,char *remainder) {
-//     char* start = strchr(inputString, '/');
-//     if (start == NULL) {
-//         return NULL;
-//     }
-//     char* end = strchr(start + 1, '/'); 
-//     if (end == NULL) {
-//         end = inputString + strlen(inputString); 
-//     }
-//     size_t length = end - start - 1; 
-//     size_t remlen = strlen(inputString) - length;
-//     char* substring = malloc(length + 1); 
-//     if (substring == NULL) {
-//         return NULL; 
-//     }
-//     memcpy(substring, start + 1, length);
-//     memcpy(remainder,end,remlen);
-//     substring[length] = '\0'; 
-//     return substring;
-// }
-
 
 inod *lookup(const char *path, int inum){
     if(strcmp(path, "/") == 0){
         return &inode_tab[1];
     }
-    // else if(strcmp(path, "") == 0){
-    //     return &inode_tab[inum];
-    // }
+
+    inod *target = i_node_lookup(path);
+    if(target != NULL){
+        return target;
+    }
+    
 
     inod *dir = &inode_tab[inum];
     assert(dir->type == DIR_TYPE);
@@ -65,6 +50,8 @@ inod *lookup(const char *path, int inum){
         }
         free(children);
     }
+
+    i_node_insert(path,dir);
 
     return dir;
 }
