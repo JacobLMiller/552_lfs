@@ -9,7 +9,7 @@
 // #include <malloc.h>
 #include <fuse.h>
 
-#define DEBUG 1
+#define DEBUG 0
 
 #define u_int unsigned int
 

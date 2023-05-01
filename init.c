@@ -57,6 +57,10 @@ void read_file(inod *ino, char *buf,int num_blocks){
         free(charbuf);
     }
 
+    if(ino->second_level > 0){
+        printf("There are more blocks to read.\n");
+    }
+
     for(int i = 0; i < num_blocks; i++){
         Flash_Read(FD,data->blocksize * addrs[i], data->blocksize, tmp_buf);
 
@@ -74,7 +78,7 @@ void read_file(inod *ino, char *buf,int num_blocks){
 static void load_from_cpt(checkpoint *cpt){
     if (DEBUG)
         printf("Block 0 can be found at address %ld\n",cpt->block_address);
-        
+
     //Read in inode0
     char *buf = malloc(bsize_bytes);
     Flash_Read(FD,data->blocksize * cpt->block_address,data->blocksize,buf);

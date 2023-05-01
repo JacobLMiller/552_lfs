@@ -17,5 +17,6 @@ static int lfs_time(const char *path, const struct timespec *tv);
 static int lfs_release(const char *path, struct fuse_file_info *fi);
 static int lfs_truncate(const char *path, off_t size);
 static int lfs_readlink(const char *path, char *buf, size_t size);
+static int lfs_getxattr(const char *path, const char *buf, char *str, size_t size);
 /***************************************************/
 

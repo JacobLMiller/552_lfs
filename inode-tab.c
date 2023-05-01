@@ -24,7 +24,7 @@ static int hash(const char *s){
 
 void init_inode_tab(){
     for (int i = 0; i < NUM_BUCKETS; i++)
-        ITAB[i] = NULL;    
+        ITAB[i] = NULL;
 }
 
 
@@ -35,9 +35,11 @@ void init_inode_tab(){
 
 inod *i_node_lookup(const char *str){
     assert(str);
+    printf("Looking up %s\n",str);
 
     int hval = hash(str);
     inocon *cur = ITAB[hval];
+    printf("I am %s\n", str);
     while (cur){
         if (strcmp(str, cur->name) == 0){
             return cur->ino;
@@ -50,7 +52,6 @@ inod *i_node_lookup(const char *str){
 
 void i_node_insert(const char *str, inod *node){
     int hval = hash(str);
-
 
     inocon *node_con = malloc(sizeof(inocon));
     node_con->ino = node;

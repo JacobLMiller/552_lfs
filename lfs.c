@@ -16,6 +16,7 @@ extern int getgid();
 
 /*Exposed from dir.c*/
 extern inod *lookup(const char *path, int inum);
+extern void init_inode_tab();
 /********************************************/
 
 /*Exposed from init.c*/
@@ -40,6 +41,7 @@ static struct fuse_operations ops = {
     .release   =     lfs_release,
     .truncate  =     lfs_truncate,
     .readlink  =     lfs_readlink,
+    .getxattr  =     lfs_getxattr,
 };
 
 static int lfs_getattr(const char *path, struct stat *st){
@@ -51,27 +53,35 @@ static int lfs_getattr(const char *path, struct stat *st){
         return -ENOENT;
     }
 
+    if(strcmp(path, "/") == 0){
+        printf("My type is %d\n",ino->type);
+    }
+
     st->st_uid = getuid();
     st->st_gid = getgid();
 
-    st->st_atime = time(NULL);
-    st->st_mtime = time(NULL);
+    // st->st_atim = time(NULL);
+    // st->st_mtim = time(NULL);
+
+    st->st_nlink = ino->num_links;
 
     switch (ino->type){
     case DIR_TYPE:
-        st->st_mode = S_IFDIR | 0755;
-        st->st_nlink = 1;
+        st->st_mode = S_IFDIR | ino->mode;
         break;
     case FILE_TYPE:
-        st->st_mode = S_IFREG | 0644;
+        st->st_mode = S_IFREG | ino->mode;
         // st->st_mode = S_IFREG | 0755;
-        st->st_nlink = 1;
         st->st_size = ino->size;
         break;
-    case SYM_LINK: //Unfinished; does tot handle links
-        st->st_nlink = ino->num_links;
+    case SYM_LINK:
         st->st_mode = S_IFLNK | 0644;
         break;
+    case NO_USE:
+    case SPECIAL:
+        st->st_mode = S_IFREG | ino->mode;
+        break;
+    case DEAD:
     default:
         printf("I don't think I should ever be here\n");
         return -ENOENT;
@@ -168,6 +178,12 @@ static int lfs_truncate(const char *path, off_t size){
     return 0;
 }
 
+static int lfs_getxattr(const char *path, const char *buf, char *str, size_t size){
+    if(DEBUG)
+        printf("getxattr was called on %s\n",path);
+    return 0;
+}
+
 
 
 int main(int argc, char **argv){
@@ -181,6 +197,7 @@ int main(int argc, char **argv){
     char *devicename = argv[argc-2];
     char *mntpnt     = argv[argc-1];
 
+    init_inode_tab();
     load_lfs(devicename);
 
     #define N_ARGS 4

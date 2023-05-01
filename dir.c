@@ -19,14 +19,16 @@ dir_entry *read_dir(inod *dir,int *num_children){
 
 
 inod *lookup(const char *path, int inum){
-    if(strcmp(path, "/") == 0){
-        return &inode_tab[1];
-    }
 
-    inod *target = i_node_lookup(path);
-    if(target != NULL){
-        return target;
-    }
+    // inod *target = i_node_lookup(path);
+    // if(target != NULL){
+    //     return target;
+    // }
+
+    if(strcmp(path, "/") == 0){
+        i_node_insert(path,&inode_tab[1]);
+        return &inode_tab[1];
+    }    
     
 
     inod *dir = &inode_tab[inum];
