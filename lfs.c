@@ -48,20 +48,19 @@ static int lfs_getattr(const char *path, struct stat *st){
     if (DEBUG)
         printf("Called getattr on: %s\n", path);
 
+
+    printf("Looking up %s\n",path);
     inod *ino = lookup(path, 1);
     if (ino == NULL){
         return -ENOENT;
     }
 
-    if(strcmp(path, "/") == 0){
-        printf("My type is %d\n",ino->type);
-    }
 
     st->st_uid = getuid();
     st->st_gid = getgid();
 
-    // st->st_atim = time(NULL);
-    // st->st_mtim = time(NULL);
+    st->st_atime = time(NULL);
+    st->st_mtime = time(NULL);
 
     st->st_nlink = ino->num_links;
 
@@ -105,8 +104,16 @@ static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, o
     read_file(dir,dir_buf,num_blocks);
     dir_entry *children = (dir_entry *)dir_buf;
 
+    printf("Size of directory is %ld\n", dir->size);
+
     for (int i=0; i<num_entries;i++){
-        filler(buffer,children[i].name,NULL,0);
+        // if(children[i].name[0] == '\0'){
+        //     printf("my file name is %s\n",children[i].name);
+        //     continue;
+        // }
+        printf("%d: %s\n",i, children[i].name);
+        if(children[i].name[0] != '\0')
+            filler(buffer,children[i].name,NULL,0);
     }
     free(children);
 

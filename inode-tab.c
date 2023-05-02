@@ -35,11 +35,9 @@ void init_inode_tab(){
 
 inod *i_node_lookup(const char *str){
     assert(str);
-    printf("Looking up %s\n",str);
 
     int hval = hash(str);
     inocon *cur = ITAB[hval];
-    printf("I am %s\n", str);
     while (cur){
         if (strcmp(str, cur->name) == 0){
             return cur->ino;

@@ -50,19 +50,42 @@ void read_file(inod *ino, char *buf,int num_blocks){
         char *charbuf = malloc(bsize_bytes);
         Flash_Read(FD,data->blocksize * ino->first_level, data->blocksize,charbuf);
         addrbuf = (long *)charbuf;
-        for(int i=0; i+DIR_BLKS<num_blocks && remain > 0; i++){
+        for(int i=0; i < K && remain > 0; i++){
             addrs[i+DIR_BLKS] = addrbuf[i];
             remain--;
         }
         free(charbuf);
     }
 
-    if(ino->second_level > 0){
-        printf("There are more blocks to read.\n");
+    if(remain > 0){
+        printf("Entering second level\n");
+        long *addrbuf2;
+        char *charbuf2 = malloc(bsize_bytes);
+        Flash_Read(FD,data->blocksize * ino->second_level, data->blocksize, charbuf2);
+        addrbuf2 = (long *)charbuf2;
+        for (int j = 0; j*K < K*K && remain > 0; j++){
+            long *addrbuf; 
+            char *charbuf = malloc(bsize_bytes);
+            Flash_Read(FD,data->blocksize * addrbuf2[j],data->blocksize,charbuf);
+            addrbuf = (long *)charbuf;
+            for(int i=0; i < K && remain > 0; i++){
+                addrs[(j*K) + i + DIR_BLKS + K] = addrbuf[i];
+                remain --;
+            }
+            free(charbuf);
+        }
+        free(charbuf2);
+    }
+
+    if(remain > 0){
+        printf("Yuh oh\n");
     }
 
     for(int i = 0; i < num_blocks; i++){
-        Flash_Read(FD,data->blocksize * addrs[i], data->blocksize, tmp_buf);
+        if(addrs[i] > 0)
+            Flash_Read(FD,data->blocksize * addrs[i], data->blocksize, tmp_buf);
+        else 
+            memset(tmp_buf, 0, data->blocksize * FLASH_SECTOR_SIZE);
 
         start = i * data->blocksize * FLASH_SECTOR_SIZE;
         end = start + (data->blocksize * FLASH_SECTOR_SIZE);
@@ -90,6 +113,7 @@ static void load_from_cpt(checkpoint *cpt){
     if (ino->size % bsize_bytes != 0)
         num_blocks++;
     tab_size = ino->size/sizeof(inod);
+    printf("There are %d inodes\n",tab_size);
     inode_tab = malloc(num_blocks * bsize_bytes);
 
     char *inod_buf = malloc(data->blocksize * FLASH_SECTOR_SIZE * num_blocks);
