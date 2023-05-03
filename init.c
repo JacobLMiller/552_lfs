@@ -6,7 +6,6 @@
 
 #define u_int unsigned int
 
-
 #include <math.h>
 #include "flash.h"
 #include "types.h"
@@ -14,14 +13,14 @@
 // Define the allocation size of blocks
 #define ALLOC_SIZE FLASH_SECTORS_PER_BLOCK*FLASH_SECTOR_SIZE
 
-/*Globals**********/
-Flash FD; // Flash device
-disk_header *data; // pointer to disk header
-inod *inode_tab; // pointer to inodes table
-int tab_size; // number of inodes
-int bsize_bytes; // block size in bytes
-int K; // used for indexing blocks in the inodes
-/*****************/
+/*Globals********************************************************/
+Flash FD;           // Flash device
+disk_header *data;  // pointer to disk header
+inod *inode_tab;    // pointer to inodes table
+int tab_size;       // number of inodes
+int bsize_bytes;    // block size in bytes
+int K;              // used for indexing blocks in the inodes
+/**************************************************************/
 
 // Declare function prototypes
 void mem_cpy_offset(char *dest, char *src, int start, int end);
@@ -32,6 +31,7 @@ static void load_from_cpt(checkpoint *cpt);
 static Flash load_device(char *fname);
 
 /**************************************************************/
+
 // Copy the content of src to dest buffer from index start to index end
 void mem_cpy_offset(char *dest, char *src, int start, int end){
     for (int i = 0; (i+start)<end; i++){
@@ -83,8 +83,9 @@ void read_file(inod *ino, char *buf,int num_blocks){
     }
 
     if(remain > 0){
-        printf("Yuh oh\n");
+        printf("Fourth address not implemented\n");
     }
+
     // Read the blocks into the buffer
     for(int i = 0; i < num_blocks; i++){
         if(addrs[i] > 0)
@@ -135,23 +136,25 @@ static void load_from_cpt(checkpoint *cpt){
     }
     
 }
+
 // This function loads a block device and sets it as the current device.
 static Flash load_device(char *fname){
+    
+    // Open the block device and get its file descriptor.    
     u_int blocks;
-        // Open the block device and get its file descriptor.
     FD = Flash_Open(fname, 1, &blocks);
 
-    if (DEBUG){
+    if (DEBUG)
         printf("I have %d blocks\n",blocks);
-    }
+    
+    // Read the first block, which contains the disk header, and store it in head.
     char *head = malloc(ALLOC_SIZE);
-        // Read the first block, which contains the disk header, and store it in head.
     Flash_Read(FD, 0,FLASH_SECTORS_PER_BLOCK,head);
 
-        // Cast the memory pointed to by head to a disk_header struct.
+    // Cast the memory pointed to by head to a disk_header struct.
     data = (disk_header *)head;
 
-        // If the DEBUG flag is set, print some information from the disk header.
+    // If the DEBUG flag is set, print some information from the disk header.
     if (DEBUG){
         printf("Magic string is %s\n",data->magic);
         printf("Version is %d\n",data->version);
@@ -163,18 +166,16 @@ static Flash load_device(char *fname){
     // Compute the block size in bytes and the number of longs per block.
     bsize_bytes = data->blocksize * FLASH_SECTOR_SIZE;
     K = bsize_bytes / sizeof(long);
-    // free(head);
     
-        // Allocate memory to read the checkpoints.
+    // Allocate memory to read the checkpoints.
     char *buf1 = malloc(ALLOC_SIZE);
     char *buf2 = malloc(ALLOC_SIZE);
 
-        // Read the first & second checkpoint block and store it in buf1 & buf2 respectively.
-
+    // Read the first & second checkpoint block and store it in buf1 & buf2 respectively.
     Flash_Read(FD,FLASH_SECTORS_PER_BLOCK,FLASH_SECTORS_PER_BLOCK,buf1);
     Flash_Read(FD,2*FLASH_SECTORS_PER_BLOCK,FLASH_SECTORS_PER_BLOCK,buf2);
 
-        // Cast the memory pointed to by buf1 and buf2 to checkpoint structs.
+    // Cast the memory pointed to by buf1 and buf2 to checkpoint structs.
     checkpoint *cp1 = (checkpoint *)buf1;
     checkpoint *cp2 = (checkpoint *)buf2;
 
@@ -187,7 +188,6 @@ static Flash load_device(char *fname){
     }
     free(buf1);
     free(buf2);
-    
 
     return FD;
 
@@ -195,8 +195,6 @@ static Flash load_device(char *fname){
 
 // This function loads a LFS from a file.
 void load_lfs(char *fname){
-    
-        // Load the block device from the file and set it as the current device.
+    // Load the block device from the file and set it as the current device.
     FD = load_device(fname);
-    
 }
