@@ -58,7 +58,6 @@ void read_file(inod *ino, char *buf,int num_blocks){
     }
 
     if(remain > 0){
-        printf("Entering second level\n");
         long *addrbuf2;
         char *charbuf2 = malloc(bsize_bytes);
         Flash_Read(FD,data->blocksize * ino->second_level, data->blocksize, charbuf2);
