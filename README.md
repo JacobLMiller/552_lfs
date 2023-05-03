@@ -2,49 +2,34 @@
 
 To compile, run 
 ```
-make mklfs 
-make lfs
+make
 ```
+The files for flash.c and flash.h need to be present in the directory, and you will need to have the fuse library installed and available in your PATH. 
 
-Note the command `make` will compile **only** lfs, and will not compile mklfs. 
-
-Then, initiate an empty disk with 
-```
-./mklfs -b BLOCK_SIZE -l SEGMENT_SIZE -w WEAR_LIMIT FILE_NAME
-```
-
-And start up the file system with 
+We can boot up a file system with the command
 
 ```
 ./lfs FILE_NAME MNT_PNT
 ```
+where the FILE_NAME is a valid flash img file and MNT_PNT is an empty directory. 
 
 # Summary
 
 *What works, what doesn't work?*
 
-All required fuse operations work in memory. Once a segment has been fully assigned blocks, it is written to disk (can be checked with hexdump). The lfs does not correctly load the filesystem on boot; It always treats it like an empty disk. Checkpoints are only half-implemented.
+We opted for the read-only LFS project, which is fully functional. Our code can load a file system from a checkpoint and read files, directories, symlinks, and hard links. Fuse callbacks provide an interface with the operating system to allow one to use commands like ls, cat, stat, etc. from the terminal. 
 
 ------------------------------------------
 
-We have all of the required fuse operations working in memory; 
-* readdir: First looks up the inode associated with the path formal parameter and ensures that it is a DIR_TYPE. We have implemented inodes as a tree (linked list) so we iterate over all children of the directory and pass it to the filler() function given by fuse. 
+The following fuse callbacks are operational: 
 
-* getattr: Sets the appropriate info in the stat struct passed by fuse. Currently gives uid, gid, atime, mtime to all inode types. The mode is set based on file type; S_IFDIR | 0755 if directory and S_IFREG | 0644 if file; Links are yet to be implemented. Additionally number of links are hard set to 1 since no links yet.
+* readdir: First looks up the inode associated with the path formal parameter and ensures that it is a DIR_TYPE. Directories are files, so the file is read into a buffer then cast to an array of dir_entry structs. A for loop then goes over each entry and calls the FUSE filler function on non-empty entries. 
 
-* utimens: returns 0. 
+* getattr: Sets the appropriate info in the stat struct passed by fuse. Currently gives uid, gid, atime, mtime to all inode types. A simple switch statement is used to set the mode of the file uisng IF_DIR, IF_REG, or IF_SYM. 
 
-* create: First creates a new inode with the name path passed to it by fuse, and is inserted into the inode hashtable. Then, the inode is appended to it's parent directory (hard coded to the root dir for now). The file is initialized empty and size set to 0. 
+* read: Looks up the inode associated with path and reads the file into memory and memcpys it into the fuse buf. 
 
-* open: Our current implementation does not need open for functionality; returns 0. 
-
-* release: Our current implementation does not need release for functionality; returns 0. 
-
-* read: Looks up the inode associated with path and uses memcpy to load it into the fuse buf. For now, we only handle files that are <= one block in length; If bigger, we return an error. 
-
-* write: Looks up the inode associated with path and uses memcpy to write it to the block_addr data structure. Currently only handles files of at most 1 block in length. If bigger, we return an error. 
-
-* truncate: Needed for write. Looks up the inode associated with path and sets it's size to the passed paramater.
+* readlink: Identical to read, though the link file contains a file string. It is copied into buf and fuse passes it to read. 
 
 -------------------------
 
@@ -84,46 +69,38 @@ Currently however, there should be no other seg faults or errors as long as file
 
 # **Files**
 
-*mklfs.c*
+*eval.py*
 
-mklfs.c creates a flash memory device by taking input arguments from the command line, creating a file with the specified name and size, and writing a header to the file containing disk parameters. The fill_device function initializes the device header data and writes it to the file using Flash_Write function from the "flash.h" library.  
-
-*log.h*
-
-log.h is used to represent information about a segment. 
-
-*log.c*
-
-log.c writes the buffer of an i_node structure to a specific sector of a flash file and returns 0 if the write was successful.
-
-*lfs.h*
-
-lfs.h declares and defines various functions for FUSE callbacks and  other helper functions for loading a Flash device, initializing the root directory, and setting file metadata.
-
-*lfs.c*
-
-lfs.c is the implementation of the a FUSE-based filesystem in C, with a specific set of operations defined in the "struct fuse_operations". 
-
-*dump_flash.c*
-
-dump_flash.c reads data from a flash memory file mentioned in the form of command line argument, by opening the file using Flash_Open function from "flash.h" library and checking for any errors. 
-
-*dir.c*
-
-dir.c  appends a file inode to a directory inode by traversing the linked list of inodes until the end is reached and adding the new inode as the last element in the list.
+A python script that tests that each .img file provided on the course webpage is loaded correctly. 
 
 *global.h*
 
-global.h contains includes for libraries common to all (most) .c files 
+Includes needed throughout the project, sets the debug mode, and defines unsigned int. 
+
+*init.c* 
+
+Includes functions to load a flash device from a .img file, booting up a file system from a checkpoint, and reading a file from an inode. 
+
+*inode-tab.c* 
+
+Manages an inode hash table that makes reading much faster after initial boot.
+
+*lfs.c*
+
+Location of the main function and the fuse interface. Implements fuse callbacks.
+
+*lfs.h*
+
+Defines fuse callback functions.
+
+*makefile*
+
+A simple make file that links all .h and .c files and compiles them into lfs 
+
+*README.md* 
+
+The raw markdown of our writeup.
 
 *types.h*
 
-types.h contains the various structs, typedefs, and datastructure defs needed for LFS
-
-*inode-tab.c*
-
-inode-tab.c is responsible for managing the inode table.
-
-*test.py* 
-
-Python script we used to systematically test our file system. Includes trying commands like touch, write, cat, cp, sha256, and diff. 
+Definitions for structs and other data structures mostly as defined in the read-only LFS spec. 

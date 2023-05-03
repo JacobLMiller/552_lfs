@@ -21,13 +21,8 @@ extern void init_inode_tab();
 
 /*Exposed from init.c*/
 extern void load_lfs(char *fname);
-extern void read_file(inod *ino, char *buf,int num_blocks);
-extern Flash FD; 
-extern disk_header *data;
-extern inod *inode_tab;
-extern int tab_size;
+extern void read_file(inod *ino, char *buf, int num_blocks);
 extern int bsize_bytes;
-extern int K;
 /*********************/
 
 static struct fuse_operations ops = {
@@ -48,13 +43,10 @@ static int lfs_getattr(const char *path, struct stat *st){
     if (DEBUG)
         printf("Called getattr on: %s\n", path);
 
-
-    printf("Looking up %s\n",path);
     inod *ino = lookup(path, 1);
     if (ino == NULL){
         return -ENOENT;
     }
-
 
     st->st_uid = getuid();
     st->st_gid = getgid();
@@ -70,11 +62,10 @@ static int lfs_getattr(const char *path, struct stat *st){
         break;
     case FILE_TYPE:
         st->st_mode = S_IFREG | ino->mode;
-        // st->st_mode = S_IFREG | 0755;
         st->st_size = ino->size;
         break;
     case SYM_LINK:
-        st->st_mode = S_IFLNK | 0644;
+        st->st_mode = S_IFLNK | ino->mode;
         break;
     case NO_USE:
     case SPECIAL:
@@ -90,7 +81,10 @@ static int lfs_getattr(const char *path, struct stat *st){
     return 0;
 }
 
-static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
+static int lfs_readdir(const char *path, void *buffer, 
+    fuse_fill_dir_t filler, off_t offset, 
+    struct fuse_file_info *fi)
+{
     if (DEBUG)
         printf("Called readdir on: %s\n", path);
 
@@ -104,14 +98,7 @@ static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, o
     read_file(dir,dir_buf,num_blocks);
     dir_entry *children = (dir_entry *)dir_buf;
 
-    printf("Size of directory is %ld\n", dir->size);
-
     for (int i=0; i<num_entries;i++){
-        // if(children[i].name[0] == '\0'){
-        //     printf("my file name is %s\n",children[i].name);
-        //     continue;
-        // }
-        printf("%d: %s\n",i, children[i].name);
         if(children[i].name[0] != '\0')
             filler(buffer,children[i].name,NULL,0);
     }

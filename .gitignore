@@ -10,6 +10,10 @@ tmp/
 *.img
 russ_test.c
 buggy_crc.c
+outs/
+diffs/
+imgs/
+lfs-outs/
 
 
 
