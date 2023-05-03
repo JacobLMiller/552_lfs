@@ -1,57 +1,44 @@
+// Define feature test macro for X/Open source compatibility and FUSE version
 #define _XOPEN_SOURCE 700
 
-#define FUSE_USE_VERSION 35 
+#define FUSE_USE_VERSION 35
+
+// Define u_int as an alias for unsigned int
 
 #define u_int unsigned int
 
-#define DEBUG 0
+// Include necessary headers
 
-#define DEF_CP_INTERVAL 4
-#define DEF_CLEAN_START 4
-#define DEF_CLEAN_STOP  8
-
-
+#include <math.h>
 #include "flash.h"
 #include "types.h"
-#include "log.h"
 #include "lfs.h"
+
+// Define the allocation size of a block
+
+#define ALLOC_SIZE FLASH_SECTORS_PER_BLOCK*FLASH_SECTOR_SIZE
 
 extern int getuid();
 extern int getgid();
 
-/*Exposed from inode-tab.c*/
-extern void init_inode_tab();
-extern void init_seg_tab();
-extern void i_node_insert(const char *str, i_node *node);
-extern i_node *i_node_lookup(const char *str);
-extern i_node *create_inode(char *name, ftype type);
-extern void flush_to_log();
-///////////////////////////
-
+// Declare functions that are exposed from dir.c and init.c
 /*Exposed from dir.c*/
-extern void append_file(i_node *root, i_node *new_node);
-////////////////////////
-
-/*Exposed from log.c*/
-extern int log_write(char *arr);
-///////////////////////
-
+extern inod *lookup(const char *path, int inum);
+extern void init_inode_tab();
 /********************************************/
 
-static Flash FD;
-extern disk_data *data;
+/*Exposed from init.c*/
+extern void load_lfs(char *fname);
+extern void read_file(inod *ino, char *buf,int num_blocks);
+extern Flash FD; 
+extern disk_header *data;
+extern inod *inode_tab;
+extern int tab_size;
+extern int bsize_bytes;
+extern int K;
+/*********************/
 
-static u_int ops_since_flush = 0;
-
-static void inc_ops(){
-    ops_since_flush ++;
-    if (ops_since_flush > DEF_CP_INTERVAL){
-        // printf("Need to flush\n");
-        flush_to_log();
-        ops_since_flush = 0;
-    }
-}
-
+// Declare the function pointers for the FUSE operations
 static struct fuse_operations ops = {
     .getattr   =     lfs_getattr,
     .readdir   =     lfs_readdir,
@@ -62,17 +49,23 @@ static struct fuse_operations ops = {
     .utimens   =     lfs_time,
     .release   =     lfs_release,
     .truncate  =     lfs_truncate,
+    .readlink  =     lfs_readlink,
+    .getxattr  =     lfs_getxattr,
 };
 
-static int lfs_getattr(const char *path, struct stat *st)
-{
+// Implementation of the lfs_getattr FUSE operation
+static int lfs_getattr(const char *path, struct stat *st){
     if (DEBUG)
         printf("Called getattr on: %s\n", path);
 
-    i_node *cur = i_node_lookup(path);
-    if (cur == NULL){
+    // Look up the inode for the given path
+    printf("Looking up %s\n",path);
+    inod *ino = lookup(path, 1);
+    if (ino == NULL){
         return -ENOENT;
     }
+
+    // Set the file attributes based on the inode information
 
     st->st_uid = getuid();
     st->st_gid = getgid();
@@ -80,19 +73,25 @@ static int lfs_getattr(const char *path, struct stat *st)
     st->st_atime = time(NULL);
     st->st_mtime = time(NULL);
 
-    switch (cur->meta->type){
+    st->st_nlink = ino->num_links;
+
+    switch (ino->type){
     case DIR_TYPE:
-        st->st_mode = S_IFDIR | 0755;
-        st->st_nlink = 1;
+        st->st_mode = S_IFDIR | ino->mode;
         break;
     case FILE_TYPE:
-        st->st_mode = S_IFREG | 0644;
+        st->st_mode = S_IFREG | ino->mode;
         // st->st_mode = S_IFREG | 0755;
-        st->st_nlink = 1;
-        st->st_size = cur->meta->size;
+        st->st_size = ino->size;
         break;
-    case LINK_TYPE: //Unfinished; does tot handle links
+    case SYM_LINK:
+        st->st_mode = S_IFLNK | 0644;
         break;
+    case NO_USE:
+    case SPECIAL:
+        st->st_mode = S_IFREG | ino->mode;
+        break;
+    case DEAD:
     default:
         printf("I don't think I should ever be here\n");
         return -ENOENT;
@@ -100,105 +99,99 @@ static int lfs_getattr(const char *path, struct stat *st)
     }
 
     return 0;
-
 }
+// Implementation of the lfs_readdir FUSE operation
+static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 
-static int lfs_readdir(const char *path, void *buffer,
-                       fuse_fill_dir_t filler, off_t offset,
-                       struct fuse_file_info *fi)
-{
-    if(DEBUG)
-        printf("Called readdir on  %s\n",path);
+    // Print a debug message if the DEBUG flag is set
+    if (DEBUG)
+        printf("Called readdir on: %s\n", path);
 
-    i_node *curdir = i_node_lookup(path);
-    char * mystr, *splitstr;
-    assert(curdir->meta->type == DIR_TYPE);
+    // Look up the directory with the given path.
+    inod *dir = lookup(path,1);
+    assert(dir->type == DIR_TYPE);
 
-    i_node *curfile = curdir->next;
-    while (curfile){
-        mystr = (char *)malloc(sizeof(char) *1024);
-        strcpy(mystr,curfile->meta->name);
-        splitstr = strtok(mystr, "/"); //Will need to fix for arbitrary directory;
-        filler(buffer,splitstr,NULL,0);
-        free(mystr);
-        curfile = curfile->next;
-    }
+    // Calculate the number of directory entries and the number of blocks in the directory.
+    int num_entries = dir->size / sizeof(dir_entry);
+    int num_blocks = (dir->size / bsize_bytes) + 1;
 
-    return 0;
-}
+    // Allocate a buffer to read the directory contents into.
+    char *dir_buf = malloc(num_blocks * bsize_bytes);
+    read_file(dir,dir_buf,num_blocks);
 
+        // Cast the buffer to an array of directory entries.
+    dir_entry *children = (dir_entry *)dir_buf;
 
-// http://libfuse.github.io/doxygen/structfuse__operations.html#a272960bfd96a0100cbadc4e5a8886038
-static int lfs_read(const char *path,
-                    char *buf, size_t size, off_t offset,
-                    struct fuse_file_info *fi)
-{
-    if(DEBUG)
-        printf("Called read on  %s\n",path);
+    printf("Size of directory is %ld\n", dir->size);
 
-    i_node *file = i_node_lookup(path);
-    int fsize = file->meta->size;
-    if(fsize > 0 && fsize <= 1024){
-        memcpy(buf,file->addrs[0].buf,fsize);
-        return fsize;
-    }
-    else if (fsize > 1024){
-        printf("big file\n");
-        return -2;
-    }
-    
-
-    return 0;
-
-}
-
-static int lfs_write(const char *path,
-                     const char *buf, size_t size, off_t offset,
-                     struct fuse_file_info *fi)
-{   
-    if(DEBUG)
-        printf("Called write on %s\n", path);
-
-    i_node *file = i_node_lookup(path);
-    if (size <= 1024){
-        memcpy(file->addrs[0].buf,buf,size);
-        file->meta->size = size;
-        // for(int i = size+1; i < 1024; i++){
-        //     file->addrs[0].buf[i] = 'a';
+    // Loop over the directory entries and add them to the buffer for FUSE.
+    for (int i=0; i<num_entries;i++){
+        // if(children[i].name[0] == '\0'){
+        //     printf("my file name is %s\n",children[i].name);
+        //     continue;
         // }
-        return size;
+        printf("%d: %s\n",i, children[i].name);
+        if(children[i].name[0] != '\0')
+            filler(buffer,children[i].name,NULL,0);
     }
-    else{
-        printf("too big: %ld\n", size);
-    }
-    
-    inc_ops();
+        // Free the directory entry buffer.
+    free(children);
+
     return 0;
 }
 
-static int lfs_open(const char *path, struct fuse_file_info *fi)
-{
+// This function is called when FUSE is reading a symbolic link.
+// It will read the contents of the symbolic link with the given path.
+static int lfs_readlink(const char *path, char *buf, size_t size){
     if(DEBUG)
-        printf("Called open on %s\n", path);
+        printf("Called readlink on %s\n",path);
+        
+    // Look up the inode of the symbolic link with the given path.
+    inod *ino = lookup(path,1);
 
+    // Calculate the number of blocks needed to read the contents of the symbolic link.
+    int num_blocks = (ino->size / bsize_bytes) + 1;
+    char *fbuf = malloc(num_blocks * bsize_bytes);
+    read_file(ino,fbuf,num_blocks);
+    memcpy(buf,fbuf,ino->size);
+    free(fbuf);
+
+
+    return 0;
+}
+//Function to implement the 'read' command
+
+static int lfs_read(const char *path,char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
+    if (DEBUG)
+        printf("Called read on %s\n",path);
+
+    inod *ino = lookup(path,1);
+    // Calculate the number of blocks required to read the file
+
+    int num_blocks = (ino->size / bsize_bytes) + 1;
+    char *fbuf = malloc(num_blocks * bsize_bytes);
+    read_file(ino,fbuf,num_blocks);
+    memcpy(buf,fbuf,ino->size);
+    free(fbuf);
+
+    return ino->size;
+}
+
+static int lfs_write(const char *path, const char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
+    if(DEBUG)
+        printf("write was called on %s\n",path);
+    return 0;
+}
+
+static int lfs_open(const char *path, struct fuse_file_info *fi){
+    if(DEBUG)
+        printf("open was called on %s\n",path);
     return 0;
 }
 
 static int lfs_create(const char *path, mode_t mt, struct fuse_file_info *fi){
     if(DEBUG)
-        printf("Called create on %s\n", path);
-
-    char *name = malloc(sizeof(char) * 25);
-    strcpy(name,path);
-    i_node *new_node = create_inode(name,FILE_TYPE);
-
-    i_node_insert(path,new_node);
-
-    i_node *root = i_node_lookup("/"); //Will need to fix for arbitrary directory; Get from string splitting.
-    append_file(root,new_node);
-
-    inc_ops();
-
+        printf("create was called on %s\n",path);
     return 0;
 }
 
@@ -208,60 +201,22 @@ static int lfs_time(const char *path, const struct timespec *tv){
 
 static int lfs_release(const char *path, struct fuse_file_info *fi){
     if(DEBUG)
-        printf("Called release on %s\n", path);
+        printf("release was called on %s\n",path);
     return 0;
 }
 
 static int lfs_truncate(const char *path, off_t size){
     if(DEBUG)
-        printf("Called truncate on %s\n", path);
-
-    i_node *ino = i_node_lookup(path);
-    ino->meta->size = size;
-
-    inc_ops();
+        printf("truncate was called on %s\n",path);
     return 0;
 }
 
-
-// static void set_name(meta *data, const char *path){
-//     data->name = malloc(sizeof(char) * 25);
-//     strcpy(data->name, path);
-// }
-
-static Flash load_device(char *fname){
-    u_int blocks;
-    Flash FD = Flash_Open(fname, 0, &blocks);
-
-    if (DEBUG){
-        printf("I have %d blocks\n",blocks);
-    }
-    char *head = malloc(TOT_SECTORS * FLASH_SECTOR_SIZE);
-    Flash_Read(FD, 0,TOT_SECTORS,head);
-
-    data = (disk_data *)head;
-    data->fname = fname;
-
-    if (DEBUG){
-        printf("Block size is %d\n", data->blocksize);
-        printf("Segment size is %d\n",data->segsize);
-        printf("Our current segment is %d\n",data->cur_sector);
-        printf("Our current block is %d\n",data->cur_block);
-    }
-
-    init_seg_tab();
-
-
-    return FD;
-
+static int lfs_getxattr(const char *path, const char *buf, char *str, size_t size){
+    if(DEBUG)
+        printf("getxattr was called on %s\n",path);
+    return 0;
 }
 
-static void init_root(){
-    init_inode_tab();
-    i_node *root = create_inode("/",DIR_TYPE);
-    i_node_insert("/", root);
-
-}
 
 
 int main(int argc, char **argv){
@@ -272,25 +227,20 @@ int main(int argc, char **argv){
         return 1;
     }
 
+    // Get the name of the flash device and mount point from the command-line arguments
+
     char *devicename = argv[argc-2];
     char *mntpnt     = argv[argc-1];
 
-    for(int i = 0; i < argc-1; i++){
-        if(strcmp(argv[i],"-i") == 0){
-            //cpnt_interval = atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i],"-c") == 0){
-            //cln_thrshld = atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i],"-C") == 0){
-            //stp_thrshld = (argv[i+1]);
-        }
-    }    
+    // Initialize the inode table
 
-    FD = load_device(devicename);
-    Flash_Close(FD);
-    init_root();
+    init_inode_tab();
 
+        // Load the LFS from the flash device
+
+    load_lfs(devicename);
+
+    // Set up the arguments for the FUSE library
 
     #define N_ARGS 4
     char *fuseargs[N_ARGS] = {
@@ -302,7 +252,6 @@ int main(int argc, char **argv){
         // "-d"
     };
 
-    fuse_main(N_ARGS,fuseargs, &ops, NULL);
+    return fuse_main(N_ARGS,fuseargs, &ops, NULL);
 
-    return 0;
 }
