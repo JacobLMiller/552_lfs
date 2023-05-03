@@ -4,18 +4,15 @@
 #define FUSE_USE_VERSION 35
 
 // Define u_int as an alias for unsigned int
-
 #define u_int unsigned int
 
 // Include necessary headers
-
 #include <math.h>
 #include "flash.h"
 #include "types.h"
 #include "lfs.h"
 
 // Define the allocation size of a block
-
 #define ALLOC_SIZE FLASH_SECTORS_PER_BLOCK*FLASH_SECTOR_SIZE
 
 extern int getuid();
@@ -59,14 +56,12 @@ static int lfs_getattr(const char *path, struct stat *st){
         printf("Called getattr on: %s\n", path);
 
     // Look up the inode for the given path
-    printf("Looking up %s\n",path);
     inod *ino = lookup(path, 1);
     if (ino == NULL){
         return -ENOENT;
     }
 
     // Set the file attributes based on the inode information
-
     st->st_uid = getuid();
     st->st_gid = getgid();
 
@@ -80,16 +75,14 @@ static int lfs_getattr(const char *path, struct stat *st){
         st->st_mode = S_IFDIR | ino->mode;
         break;
     case FILE_TYPE:
+    case NO_USE:
+    case SPECIAL:
         st->st_mode = S_IFREG | ino->mode;
         // st->st_mode = S_IFREG | 0755;
         st->st_size = ino->size;
         break;
     case SYM_LINK:
         st->st_mode = S_IFLNK | 0644;
-        break;
-    case NO_USE:
-    case SPECIAL:
-        st->st_mode = S_IFREG | ino->mode;
         break;
     case DEAD:
     default:
@@ -100,6 +93,7 @@ static int lfs_getattr(const char *path, struct stat *st){
 
     return 0;
 }
+
 // Implementation of the lfs_readdir FUSE operation
 static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi){
 
@@ -122,19 +116,13 @@ static int lfs_readdir(const char *path, void *buffer, fuse_fill_dir_t filler, o
         // Cast the buffer to an array of directory entries.
     dir_entry *children = (dir_entry *)dir_buf;
 
-    printf("Size of directory is %ld\n", dir->size);
-
     // Loop over the directory entries and add them to the buffer for FUSE.
     for (int i=0; i<num_entries;i++){
-        // if(children[i].name[0] == '\0'){
-        //     printf("my file name is %s\n",children[i].name);
-        //     continue;
-        // }
-        printf("%d: %s\n",i, children[i].name);
         if(children[i].name[0] != '\0')
             filler(buffer,children[i].name,NULL,0);
     }
-        // Free the directory entry buffer.
+    
+    // Free the directory entry buffer.
     free(children);
 
     return 0;
@@ -159,15 +147,15 @@ static int lfs_readlink(const char *path, char *buf, size_t size){
 
     return 0;
 }
-//Function to implement the 'read' command
 
+//Function to implement the 'read' command
 static int lfs_read(const char *path,char *buf, size_t size, off_t offset,struct fuse_file_info *fi){
     if (DEBUG)
         printf("Called read on %s\n",path);
 
     inod *ino = lookup(path,1);
-    // Calculate the number of blocks required to read the file
 
+    // Calculate the number of blocks required to read the file
     int num_blocks = (ino->size / bsize_bytes) + 1;
     char *fbuf = malloc(num_blocks * bsize_bytes);
     read_file(ino,fbuf,num_blocks);
@@ -233,15 +221,12 @@ int main(int argc, char **argv){
     char *mntpnt     = argv[argc-1];
 
     // Initialize the inode table
-
     init_inode_tab();
 
-        // Load the LFS from the flash device
-
+    // Load the LFS from the flash device
     load_lfs(devicename);
 
     // Set up the arguments for the FUSE library
-
     #define N_ARGS 4
     char *fuseargs[N_ARGS] = {
         "fuse_sys",

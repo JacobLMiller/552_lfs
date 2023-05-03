@@ -47,6 +47,7 @@ void read_file(inod *ino, char *buf,int num_blocks){
     // Calculate the number of blocks to read and their addresses
     remain = num_blocks;
     long addrs[num_blocks];
+    memset(addrs, 0, num_blocks * sizeof(long));
     for(int i = 0; i<DIR_BLKS && i<num_blocks;i++){
         addrs[i] = ino->direct_addr[i];
         remain--;
@@ -83,7 +84,7 @@ void read_file(inod *ino, char *buf,int num_blocks){
     }
 
     if(remain > 0){
-        printf("Fourth address not implemented\n");
+        printf("Third and Fourth address not implemented\n");
     }
 
     // Read the blocks into the buffer
@@ -121,16 +122,15 @@ static void load_from_cpt(checkpoint *cpt){
     if (ino->size % bsize_bytes != 0)
         num_blocks++;
     tab_size = ino->size/sizeof(inod);
-    printf("There are %d inodes\n",tab_size);
     inode_tab = malloc(num_blocks * bsize_bytes);
 
     char *inod_buf = malloc(data->blocksize * FLASH_SECTOR_SIZE * num_blocks);
     read_file(ino,inod_buf,num_blocks);
 
-
     inode_tab = (inod *)inod_buf;
 
     if(DEBUG){
+        printf("There are %d inodes\n",tab_size);        
         for(int i=0; i<tab_size; i++)
             printf("I have size %ld\n",inode_tab[i].size);
     }
